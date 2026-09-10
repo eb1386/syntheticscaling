@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+# large artefacts never go in git; results/ holds only small JSON/CSV summaries
+data/raw/
+data/processed/
+checkpoints/
+results/**/*.pt
+results/**/*.safetensors
+results/**/*.bin
+wandb/
+.env
