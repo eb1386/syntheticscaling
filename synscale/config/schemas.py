@@ -16,7 +16,7 @@ Design rules
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -84,10 +84,16 @@ class GenerationConfig(BaseModel):
     temperature: float
     top_p: float
     top_k: int = -1
+    repetition_penalty: float = Field(1.0, description="vLLM repetition_penalty; identical for all teachers.")
     max_new_tokens: int
     samples_per_prompt: int = 1
     sampling_seed: int
     stop_sequences: list[str] = Field(default_factory=list)
+    stop_token_ids: list[int] = Field(default_factory=list, description="EOS ids of the chat template.")
+    backend_extras: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Backend-specific sampling options (hashed into the generation manifest); identical for all teachers.",
+    )
     filter_ruleset: str = Field(..., description="Id of the teacher-agnostic filter ruleset.")
     target_student_tokens: int = Field(
         ..., description="Deliverable size after filtering, counted in student-tokenizer tokens."
