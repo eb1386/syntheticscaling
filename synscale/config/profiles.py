@@ -25,6 +25,8 @@ class TeacherSpec:
     config_path: str = ""         # teacher config fragment (BF16 reference; quantization from this profile)
     tensor_parallel: int = 1
     max_model_len: int = 4096
+    family: str = "qwen2.5"       # for the cross-family screening analysis (docs/24)
+    student_subset: Optional[tuple] = None  # if set, this teacher is used only for these students (partial 2nd family)
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,9 @@ class Profile:
     training_prefix: str = "train_"      # experiment YAMLs use configs/training/<prefix><student>.yaml
     primary_outcome: str = "p_cc"        # "loss" for the scaling study (loss-vs-D), "p_cc" otherwise
     teacher_precision: str = "awq_marlin"
+    gpu: str = "rtx5080"                 # target GPU id (see synscale.analysis.config_planner.GPUS)
+    persistent_dir: str = "data"         # root for tokenizer/corpora/pools/checkpoints on a persistent volume
+    measure_data_properties: bool = False  # compute the student-referenced data-quality index q (docs/24)
     notes: str = ""
 
 
@@ -156,6 +161,7 @@ MICRO = Profile(
     phase_seeds=1, base_seeds={"s_micro": 1}, tier2_seeds=0, tier2_teachers=(),
     c1_seeds=1, pool_prompts=1500,
     dsweep_student=None, dsweep_teachers=(), dsweep_levels=(), dsweep_seeds=0,
+    measure_data_properties=True,
     notes="Tiny CPU end-to-end validation with MockBackend and a byte tokenizer.",
 )
 
@@ -206,7 +212,54 @@ SCALING5080_FAST = Profile(
     notes="Reduced scaling study (~1 week): 3 students x 4 FP8 teachers.",
 )
 
-PROFILES: dict[str, Profile] = {p.name: p for p in (SCALING5080, SCALING5080_FAST, LOCAL5080, LOCAL5080_FAST, SMOKE, MICRO)}
+
+# ============================================================================================
+# C4: two-family, main-track-targeted study on rented H100s (docs/24). FP8 for all teachers
+# (uniform precision, quantized on load), 70B/72B served tensor-parallel over 2 cards. The
+# Qwen family spans all students; a partial Llama family at two student sizes breaks the
+# size-vs-family confound at the key points without doubling the whole grid (cost-efficient C4).
+# ============================================================================================
+def _fp8t(name, size, params, family, config, tp=1, subset=None):
+    return TeacherSpec(name, size, params, "fp8", config_path=config, tensor_parallel=tp,
+                       max_model_len=4096, family=family, student_subset=subset)
+
+_C4_STUDENTS = ("s025m", "s050m", "s100m", "s250m", "s500m", "s1b")
+_LLAMA_SUBSET = ("s100m", "s1b")   # cross-family screen at one small and one large student
+
+C4_TEACHERS = (
+    # Qwen2.5-Instruct across the full size axis, all students
+    _fp8t("t0p5b", "Qwen/Qwen2.5-0.5B-Instruct", 500_000_000, "qwen2.5", "configs/teachers/qwen2.5-0.5b-instruct.yaml"),
+    _fp8t("t1p5b", "Qwen/Qwen2.5-1.5B-Instruct", 1_500_000_000, "qwen2.5", "configs/teachers/qwen2.5-1.5b-instruct.yaml"),
+    _fp8t("t3b",   "Qwen/Qwen2.5-3B-Instruct",   3_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-3b-instruct.yaml"),
+    _fp8t("t7b",   "Qwen/Qwen2.5-7B-Instruct",   7_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-7b-instruct.yaml"),
+    _fp8t("t14b",  "Qwen/Qwen2.5-14B-Instruct",  14_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-14b-instruct.yaml"),
+    _fp8t("t32b",  "Qwen/Qwen2.5-32B-Instruct",  32_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-32b-instruct.yaml"),
+    _fp8t("t72b",  "Qwen/Qwen2.5-72B-Instruct",  72_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-72b-instruct.yaml", tp=2),
+    # Llama-3.x partial second family at two student sizes (confound break)
+    _fp8t("l3b",   "meta-llama/Llama-3.2-3B-Instruct", 3_210_000_000, "llama3.2", "configs/teachers/l3b-instruct.yaml", subset=_LLAMA_SUBSET),
+    _fp8t("l8b",   "meta-llama/Llama-3.1-8B-Instruct", 8_030_000_000, "llama3.1", "configs/teachers/l8b-instruct.yaml", subset=_LLAMA_SUBSET),
+    _fp8t("l70b",  "meta-llama/Llama-3.1-70B-Instruct", 70_600_000_000, "llama3.1", "configs/teachers/l70b-instruct.yaml", tp=2, subset=_LLAMA_SUBSET),
+)
+
+C4 = Profile(
+    name="c4",
+    students=_C4_STUDENTS,
+    teachers=C4_TEACHERS,
+    controls=("base_only", "matched_real", "human_instruct"),
+    d_syn=400_000_000, d2_tokens=530_000_000, replay_fraction=0.25,
+    base_tokens={"s025m": 500_000_000, "s050m": 1_000_000_000, "s100m": 2_000_000_000,
+                 "s250m": 4_900_000_000, "s500m": 10_000_000_000, "s1b": 15_000_000_000},
+    phase_seeds=3, base_seeds={"s025m": 3, "s050m": 1, "s100m": 1, "s250m": 1, "s500m": 1, "s1b": 1},
+    tier2_seeds=0, tier2_teachers=(),
+    c1_seeds=3, pool_prompts=2_000_000,
+    dsweep_student=None, dsweep_teachers=(), dsweep_levels=(), dsweep_seeds=0,
+    training_prefix="train_scaling_", primary_outcome="loss", teacher_precision="fp8",
+    gpu="h100_80", persistent_dir="/workspace/synscale", measure_data_properties=True,
+    notes="C4 main-track target: Qwen 0.5-72B (all students) + partial Llama 3/8/70B at 100M and 1B; "
+          "loss-based scaling, student-referenced data-quality index, cross-family screening (docs/24).",
+)
+
+PROFILES: dict[str, Profile] = {p.name: p for p in (C4, SCALING5080, SCALING5080_FAST, LOCAL5080, LOCAL5080_FAST, SMOKE, MICRO)}
 
 
 def get_profile(name: str) -> Profile:

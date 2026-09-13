@@ -1,25 +1,16 @@
-# StudentConfig — s500m: locked shape from docs/00_locked_methodology.md §0.5.
-# Exact counts (synscale/models/param_count.py convention, tied embeddings, RMSNorm gains counted):
-#   total = 505,495,872   non-embedding = 462,487,872   (embedding = vocab_size * d_model = 43,008,000)
-# Family rules: Llama-2 32k SentencePiece tokenizer, tied embeddings, GQA 3:1, head_dim 64,
-# d_ff = 8/3 * d_model exactly, RMSNorm, RoPE theta 1e4, no biases, context 2048,
-# init N(0, 0.02) with 1/sqrt(2L) residual scaling (depth_scaled_init).
+# Student s500m (16k BPE family): total=503,778,240 non-emb=481,758,144 (+0.8%).
 name: s500m
 target_params: 500000000
-n_layers: 24
+n_layers: 25
 d_model: 1344
 n_heads: 21
 n_kv_heads: 7
 head_dim: 64
 d_ff: 3584
-vocab_size: 32000
+vocab_size: 16384
 context_length: 2048
 tie_embeddings: true
 rope_theta: 10000.0
-norm_eps: 1.0e-5
+norm_eps: 1.0e-05
 init_std: 0.02
 depth_scaled_init: true
-activation: swiglu
-norm: rmsnorm
-attention_bias: false
-mlp_bias: false

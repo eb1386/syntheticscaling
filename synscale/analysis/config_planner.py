@@ -20,6 +20,8 @@ GPUS = {
     "a100_80":  dict(vram=80,  tflops=312, bw=1935, usd=1.39),
     "h100_80":  dict(vram=80,  tflops=990, bw=3350, usd=2.89),
     "h200":     dict(vram=141, tflops=990, bw=4800, usd=4.39),
+    "h100_spot":     dict(vram=80, tflops=990, bw=3350, usd=1.49),  # marketplace/spot (Vast/Spheron), Sep 2026
+    "h100_ondemand": dict(vram=80, tflops=990, bw=3350, usd=2.50),  # reliable on-demand (Spheron/Lambda)
 }
 
 # student total params and per-size MFU assumption (tiny models under-use big GPUs)

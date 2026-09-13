@@ -1,5 +1,13 @@
 # 00. Locked Methodology (Decision Record v1.0)
 
+> **ACTIVE STUDY: C4 (docs/24).** The project now runs, by default, the two-family,
+> loss-based scaling study defined in `docs/24_novel_experiment.md` on rented H100s
+> (`c4` profile). It reframes the question from teacher-size selection to *what governs*
+> synthetic-data scaling (teacher size, family, or a student-referenced data-quality
+> index q), adds a second teacher family, out-of-sample predictive validation, and a
+> compute-allocation frontier. This document and docs 04-21 remain the methodological
+> and cluster-scale record; where C4 differs, docs/24 and docs/22 win.
+
 Status: **locked for the pilot**; every item below supersedes any conflicting text in the workstream documents (docs 04–13), which are retained as the derivation record. Each decision names the alternatives that were considered, the workstream disagreement it resolves, and its status tag: **[choice]** methodological choice, **[assumption]** number to be measured in the pilot, **[hypothesis]**, **[fact]** established/literature-supported.
 
 ## 0.1 Title and framing

@@ -5,7 +5,9 @@
 # teacher models (Qwen2.5 AWQ int4), and builds the frozen prompt pool.
 # Re-run safe: each step is skipped if its output already exists.
 set -euo pipefail
-PROFILE="${1:-scaling5080}"
+PROFILE="${1:-c4}"
+# RunPod: attach a persistent network volume at /workspace so data + checkpoints survive spot reclaims.
+# Long base-training jobs are safest on on-demand; the many short jobs run fine on spot (pipeline resumes).
 PYTHON="${PYTHON:-python3}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"

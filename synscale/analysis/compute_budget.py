@@ -23,7 +23,7 @@ TDP_5080 = 360.0                  # W
 POWER_UTIL = {"train": 0.85, "gen": 0.80, "eval": 0.55}
 
 # training effective throughput: h per 1e9 tokens (from doc 13 Table B.1, 5080 column)
-H_PER_1E9_TOK = {"s025m": 3.01, "s050m": 4.20, "s100m": 6.56, "s250m": 12.79, "s500m": 25.51}
+H_PER_1E9_TOK = {"s025m": 3.01, "s050m": 4.20, "s100m": 6.56, "s250m": 12.79, "s500m": 25.51, "s1b": 47.0}
 # generation decode throughput on one 5080, int4 (awq_marlin), batched [assume, +-2x]
 GEN_TOK_PER_S_INT4 = {5e8: 9000.0, 1.5e9: 6000.0, 3e9: 4000.0, 7e9: 2200.0, 14e9: 1200.0}
 
@@ -104,7 +104,7 @@ def phase2_lines(p: Profile) -> list[Line]:
 
 def eval_lines(p: Profile) -> list[Line]:
     # minutes per full primary+continuous eval, per doc 13 B.3 (5080)
-    mins = {"s025m": 12, "s050m": 13, "s100m": 14, "s250m": 18, "s500m": 32}
+    mins = {"s025m": 12, "s050m": 13, "s100m": 14, "s250m": 18, "s500m": 32, "s1b": 48}
     counts = branch_counts(p)
     out = []
     for s in p.students:
@@ -158,6 +158,6 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--profile", default="scaling5080",
-                    choices=["scaling5080", "scaling5080_fast", "local5080", "local5080_fast", "smoke"])
+                    choices=["c4", "scaling5080", "scaling5080_fast", "local5080", "local5080_fast", "smoke"])
     a = ap.parse_args()
     print(format_budget(budget(a.profile)))

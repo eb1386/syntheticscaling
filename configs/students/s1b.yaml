@@ -1,25 +1,16 @@
-# StudentConfig — s1b: locked shape from docs/00_locked_methodology.md §0.5.
-# Exact counts (synscale/models/param_count.py convention, tied embeddings, RMSNorm gains counted):
-#   total = 1,005,571,584   non-embedding = 956,419,584   (embedding = vocab_size * d_model = 49,152,000)
-# Family rules: Llama-2 32k SentencePiece tokenizer, tied embeddings, GQA 3:1, head_dim 64,
-# d_ff = 8/3 * d_model exactly, RMSNorm, RoPE theta 1e4, no biases, context 2048,
-# init N(0, 0.02) with 1/sqrt(2L) residual scaling (depth_scaled_init).
+# Student s1b (16k BPE family): total=1,006,754,304 non-emb=981,588,480 (+0.7%).
 name: s1b
 target_params: 1000000000
-n_layers: 38
+n_layers: 39
 d_model: 1536
 n_heads: 24
 n_kv_heads: 8
 head_dim: 64
 d_ff: 4096
-vocab_size: 32000
+vocab_size: 16384
 context_length: 2048
 tie_embeddings: true
 rope_theta: 10000.0
-norm_eps: 1.0e-5
+norm_eps: 1.0e-05
 init_std: 0.02
 depth_scaled_init: true
-activation: swiglu
-norm: rmsnorm
-attention_bias: false
-mlp_bias: false

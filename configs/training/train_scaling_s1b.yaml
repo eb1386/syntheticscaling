@@ -1,0 +1,45 @@
+# Scaling config s1b (16k BPE): base=15B tok, N_ne=981,588,480, lr=0.000461.
+name: train_scaling_s1b
+tokenizer: bpe16k-v1
+tokenizer_sha256: PENDING
+context_length: 2048
+precision: bf16_mixed
+optimizer: adamw
+checkpoint_rule: final
+eval_every_tokens: 25000000
+seed_base: 1
+seed_phase: 1
+base_phase:
+  tokens: 15000000000
+  batch_tokens: 1048576
+  lr_peak: 0.000461
+  lr_min_ratio: 1.0
+  schedule: wsd
+  warmup_tokens: 100000000
+  decay_tokens: 0
+  weight_decay: 0.1
+  betas:
+  - 0.9
+  - 0.95
+  eps: 1.0e-08
+  grad_clip: 1.0
+  loss_mask: all_tokens
+  packing: packed_masked
+  replay_fraction: 0.0
+synthetic_phase:
+  tokens: 530000000
+  batch_tokens: 1048576
+  lr_peak: 0.000461
+  lr_min_ratio: 0.0
+  schedule: wsd
+  warmup_tokens: 0
+  decay_tokens: 530000000
+  weight_decay: 0.1
+  betas:
+  - 0.9
+  - 0.95
+  eps: 1.0e-08
+  grad_clip: 1.0
+  loss_mask: all_tokens
+  packing: packed_masked
+  replay_fraction: 0.25

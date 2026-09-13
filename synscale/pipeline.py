@@ -158,8 +158,10 @@ class BranchJob:
 def enumerate_branches(profile: Profile) -> list[BranchJob]:
     jobs: list[BranchJob] = []
     for s in profile.students:
-        # teachers (synthetic), tier-1 seeds
+        # teachers (synthetic), tier-1 seeds; a teacher with a student_subset serves only those students
         for t in profile.teachers:
+            if t.student_subset is not None and s not in t.student_subset:
+                continue
             seeds = list(range(1, profile.phase_seeds + 1))
             if t.name in profile.tier2_teachers:
                 seeds += list(range(profile.phase_seeds + 1, profile.phase_seeds + 1 + profile.tier2_seeds))
@@ -391,6 +393,49 @@ def load_student_ctx(student: str) -> int:
 
 
 # ======================================================================================
+# Data-property index q (docs/24): computed once per (student, teacher) after base + generation
+# ======================================================================================
+def data_properties_stage(profile: Profile, gen_dirs: dict, base_ckpts: dict, tokenizer, bos_id,
+                          *, results_dir: Path, device: str) -> Path:
+    """Write results/<profile>/data_props.json: diversity + correctness (per teacher) and
+    learnability NLL (per student x teacher, under theta*(S)). Cheap: samples a few hundred
+    responses per teacher/student."""
+    import json as _json
+    from synscale.analysis import data_properties as dp
+    out = results_dir / "data_props.json"
+    rows = []
+    fam = {t.name: t.family for t in profile.teachers}
+    # teacher-only metrics (once per teacher)
+    div = {name: dp.diversity_metrics(gd) for name, gd in gen_dirs.items()}
+    corr = {name: dp.correctness_rate(gd) for name, gd in gen_dirs.items()}
+    for s in profile.students:
+        model = _load_model_from_ckpt(base_ckpts[s], _student_cfg(s)); model.to(device)
+        for tname, gd in gen_dirs.items():
+            t = next(tt for tt in profile.teachers if tt.name == tname)
+            if t.student_subset is not None and s not in t.student_subset:
+                continue
+            learn = dp.learnability_nll(gd, model, tokenizer, bos_id, device=device, limit=300)
+            rows.append({"student": s, "teacher": tname, "family": fam.get(tname, "qwen2.5"),
+                         "distinct_2": div[tname]["distinct_2"], "mean_len": div[tname]["mean_len"],
+                         "correctness": corr[tname].get("correctness"), "learnability_nll": learn})
+        del model
+        try:
+            import torch, gc as _gc; _gc.collect(); torch.cuda.empty_cache() if device == "cuda" else None
+        except Exception:
+            pass
+    out.write_text(_json.dumps(rows, indent=2))
+    return out
+
+
+def _student_cfg(student: str):
+    from synscale.config.loader import load_experiment  # not used directly; build via yaml
+    import yaml
+    from synscale.config.schemas import StudentConfig
+    d = yaml.safe_load((REPO_ROOT / _student_frag(student)).read_text())
+    return StudentConfig.model_validate(d)
+
+
+# ======================================================================================
 # Top-level orchestration
 # ======================================================================================
 def run_profile(profile_name: str, *, data_dir: Optional[Path] = None, results_dir: Optional[Path] = None,
@@ -473,6 +518,13 @@ def run_profile(profile_name: str, *, data_dir: Optional[Path] = None, results_d
                            use_fixtures=is_toy, device=device, tasks=tasks,
                            nll_stems={"instr": corpora["nll_instr"]}, limit=eval_limit)
     log["stages"].append("pretrain_base")
+    if profile.measure_data_properties:
+        try:
+            data_properties_stage(profile, gen_dirs, base_ckpts, tokenizer, bos_id,
+                                  results_dir=results_dir, device=device)
+            log["stages"].append("data_properties")
+        except Exception as e:
+            log["data_properties_error"] = str(e)
     if stop_after == "pretrain_base":
         return log
 

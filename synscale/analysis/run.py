@@ -63,5 +63,39 @@ def analyze_index(index_path: str | Path, out_dir: str | Path) -> dict[str, Any]
     except Exception as e:
         report["notes"].append(f"scaling analysis skipped: {e}")
 
+    # NOVELTY analyses (docs/24): screening (q vs identity), predictive law, compute allocation
+    try:
+        import json as _json
+        from synscale.analysis import novelty, scaling as _sc, data_properties as _dp
+        results_dir = Path(index_path).parent
+        dp_path = results_dir / "data_props.json"
+        recs = _sc.collect_curves(results_dir, eval_set="instr")
+        fits = _sc.fit_cells(recs) if recs else []
+        # attach q from data_props.json if it exists
+        if dp_path.exists() and fits:
+            props = {(r["student"], r["teacher"]): r for r in _dp.quality_index(_json.loads(dp_path.read_text()))}
+            cells = []
+            for f in fits:
+                if not f.get("t_params"):
+                    continue
+                pr = props.get((f["student"], f["teacher"]), {})
+                cells.append({**f, "family": pr.get("family", "qwen2.5"), "q": pr.get("q")})
+            nrep = {"screening": novelty.screening_test(cells, outcome="L_inf_hat")}
+        else:
+            nrep = {"note": "data_props.json not found or no fits; run with measure_data_properties"}
+        # predictive law + allocation from the raw curves / fits (no q needed)
+        by_cell = {}
+        for r in recs:
+            by_cell.setdefault((r["student"], r["cond"]), []).extend(r["curve"])
+        nrep["predictive_law"] = novelty.predictive_law({k: v for k, v in by_cell.items() if k[1] and k[1][0] in "tl"})
+        fit_by_cell = {(f["student"], f["teacher"]): {**f["_fit"], "t_params": f["t_params"]}
+                       for f in fits if f.get("t_params")}
+        student_params = {f["student"]: f["s_params"] for f in fits if f.get("s_params")}
+        nrep["compute_allocation"] = novelty.compute_allocation_frontier(fit_by_cell, student_params)
+        (out_dir / "novelty_report.json").write_text(json.dumps(nrep, indent=2, default=str))
+        report["novelty"] = "written to novelty_report.json"
+    except Exception as e:
+        report["notes"].append(f"novelty analysis skipped: {e}")
+
     (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
     return report
