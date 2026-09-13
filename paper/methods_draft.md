@@ -1,3 +1,4 @@
+<!-- SINGLE-CARD SCOPE NOTE: these drafts describe the full cluster design (5 students, 6-7 teachers to 72B). The single-RTX-5080 run (docs/RUN_ON_5080.md) executes a scoped subset (3 students 25M-250M, 5 teachers 0.5-14B int4); use those axes when reporting a 5080-only result. -->
 # 3 Methods
 
 This section describes the locked design (decision record v1.0). Every number is a design parameter, an assumption the pilot will measure ([assumption], [estimate], [hypothesis]) or a placeholder; no results are reported. Items still to be verified before the pre-registration is frozen are marked [CHECK].

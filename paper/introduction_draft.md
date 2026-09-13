@@ -1,3 +1,4 @@
+<!-- SINGLE-CARD SCOPE NOTE: these drafts describe the full cluster design (5 students, 6-7 teachers to 72B). The single-RTX-5080 run (docs/RUN_ON_5080.md) executes a scoped subset (3 students 25M-250M, 5 teachers 0.5-14B int4); use those axes when reporting a 5080-only result. -->
 # 1 Introduction (draft)
 
 Citations are author-year in brackets; arXiv ids are in the reference list, which contains only papers that appear in the literature review (lit_review.md). [CHECK] marks a detail the literature review could not verify online or that must be confirmed against the locked methodology before submission.

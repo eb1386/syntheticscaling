@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Run the whole study on one RTX 5080. Resumable: re-run to continue after an interruption.
+# Usage:  ./run_all.sh [PROFILE] [extra args...]
+#   PROFILE: local5080 (full, ~4 weeks) | local5080_fast (~1 week) | smoke (GPU, ~1h) | micro (CPU, minutes)
+set -euo pipefail
+PROFILE="${1:-local5080}"; shift || true
+HERE="$(cd "$(dirname "$0")" && pwd)"; cd "$HERE"
+if [ -d .venv ]; then source .venv/bin/activate; fi
+export SYNSCALE_STORE="${SYNSCALE_STORE:-checkpoints/$PROFILE}"
+mkdir -p "results/$PROFILE" logs
+echo "==> profile=$PROFILE  store=$SYNSCALE_STORE  (logging to results/$PROFILE/run.log)"
+echo "==> This is long-running. Use tmux/screen so it survives disconnects."
+stdbuf -oL -eL python -m synscale.pipeline --profile "$PROFILE" "$@" 2>&1 | tee -a "results/$PROFILE/run.log"
+echo "==> done. Tables + figures under results/$PROFILE/analysis/"

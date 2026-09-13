@@ -5,6 +5,34 @@ Research-ready specification, implementation, and paper drafts for a controlled 
 
 **Core question.** For a student of size S ∈ {25M, 100M, 250M, 500M, 1B} trained to a fixed base state on real data, which teacher size T ∈ {1.5B, 3B, 7B, 14B, 32B, 72B} (Qwen2.5-Instruct; 0.5B as an extension) produces the most useful 600M tokens of synthetic annealing data under one frozen generation protocol, how does that depend on S, and how does it change when generation cost is charged?
 
+## Run it on a single RTX 5080
+
+```bash
+./install.sh local5080     # deps + tokenizer + corpora + Qwen2.5 int4 teachers + prompt pool (one time)
+./run_all.sh local5080     # runs the whole study end to end, resumable
+```
+
+Validate first (minutes to an hour), and see the time estimate:
+
+```bash
+make micro                       # CPU end-to-end validation (no GPU) — verified in this repo
+make smoke                       # GPU validation with real models, tiny budget (~1-3h)
+make budget PROFILE=local5080    # GPU-hours and wall-clock estimate
+```
+
+**Honest time cost on one 16 GB RTX 5080** (`synscale/analysis/compute_budget.py`; serial):
+
+| Profile | Scope | Total GPU-hours | Wall-clock |
+|---|---|---|---|
+| `local5080` | 3 students (25M-250M) x 5 teachers (0.5-14B int4) + controls, 3-5 seeds, D-sweep | ~651 | **~27 days (~34 with overhead)** |
+| `local5080_fast` | 2 students x 4 teachers (<=7B), lower power | ~167 | ~7 days (~9 with overhead) |
+| `smoke` | real models, tiny budget | ~1-3 | ~1-3 hours |
+
+The full study is about a month of continuous GPU time — the real cost of a complete
+teacher x student grid with controls and seeds on one consumer card. `docs/RUN_ON_5080.md`
+explains the scoping (a single 5080 cannot serve 32B/72B teachers or train 1B students in
+reasonable time), the knobs to shorten it, and what to rent a bigger card for.
+
 ## Deliverables
 
 | # | Deliverable | Location |
@@ -28,6 +56,7 @@ Research-ready specification, implementation, and paper drafts for a controlled 
 | 16 | Compute budget (pilot, full, per hardware profile) | `docs/16_compute_budget.md` |
 | 17 | Repository architecture | `docs/17_repository_architecture.md` |
 | 18 | Experiment-tracking standard | `docs/18_experiment_tracking_standard.md` |
+| 19 | Failure-mode register | `docs/19_failure_mode_register.md` |
 | 19 | Failure-mode register | `docs/19_failure_mode_register.md` |
 | 20 | Figure/table plan | `docs/20_figure_table_plan.md` |
 | 21 | Paper outline | `docs/21_paper_outline.md` |
