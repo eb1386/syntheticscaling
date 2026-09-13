@@ -1,0 +1,33 @@
+# GenerationConfig — 'unfiltered' ablation. SAME samples as main_v1 (no extra generation): identical
+# pool, decoding and seeds; only the filter ruleset differs. filters-v1.0-minimal keeps only
+# F1 (truncation drop) and F11 (benchmark-contamination union-drop, mandatory per doc 00 §0.11);
+# F2-F10 are recorded as flags but not applied.
+name: unfiltered_v1
+prompt_pool: data/prompts/pool-v1.0.jsonl
+prompt_pool_sha256: PENDING          # sha256 of the frozen pool JSONL; filled by the pool builder
+system_prompt_id: sys-v1.0
+temperature: 0.7
+top_p: 0.8
+top_k: 20
+repetition_penalty: 1.05
+max_new_tokens: 1024
+samples_per_prompt: 1
+sampling_seed: 0
+stop_sequences: []
+stop_token_ids: [151645, 151643]
+backend_extras:
+  backend: vllm
+  vllm_version: PIN_ME              # pinned once for the whole study; launcher fails on mismatch (doc 18 §18.6)
+  min_p: 0.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  logprobs: 0                        # sampled-token logprob only -> cumulative_logprob covariate
+  chat_template_id: chatml-canonical-v1
+  chat_template_sha256: PENDING      # extracted from the 7B tokenizer; asserted equal for every size
+  kv_cache_dtype: bf16
+  gpu_memory_utilization: 0.92
+  max_num_seqs: 512
+  per_request_seed_rule: "H(pool_version, prompt_id, sample_idx) mod 2^31"
+  overgeneration_factor: 1.25        # per-teacher stopping rule at 1.25x quota (doc 00 §0.7)
+filter_ruleset: filters-v1.0-minimal
+target_student_tokens: 600000000

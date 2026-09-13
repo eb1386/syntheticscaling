@@ -1,0 +1,33 @@
+# GenerationConfig — 'neutral decoding' ablation (synthetic_data.md §2.1 decoding ablation).
+# T 1.0, top-p 0.95, top-k off, repetition_penalty 1.0. Used at t1p5b and t72b x s100m at D_syn = 150M
+# (a 150M pool per teacher keeps the extra 72B generation to ~1/4 of a main pool; the reference cells
+# are the main-protocol runs at the same D_syn = 150M). Everything else identical to main_v1.
+name: neutral_v1
+prompt_pool: data/prompts/pool-v1.0.jsonl
+prompt_pool_sha256: PENDING          # sha256 of the frozen pool JSONL; filled by the pool builder
+system_prompt_id: sys-v1.0
+temperature: 1.0
+top_p: 0.95
+top_k: -1
+repetition_penalty: 1.0
+max_new_tokens: 1024
+samples_per_prompt: 1
+sampling_seed: 0
+stop_sequences: []
+stop_token_ids: [151645, 151643]
+backend_extras:
+  backend: vllm
+  vllm_version: PIN_ME              # pinned once for the whole study; launcher fails on mismatch (doc 18 §18.6)
+  min_p: 0.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  logprobs: 0                        # sampled-token logprob only -> cumulative_logprob covariate
+  chat_template_id: chatml-canonical-v1
+  chat_template_sha256: PENDING      # extracted from the 7B tokenizer; asserted equal for every size
+  kv_cache_dtype: bf16
+  gpu_memory_utilization: 0.92
+  max_num_seqs: 512
+  per_request_seed_rule: "H(pool_version, prompt_id, sample_idx) mod 2^31"
+  overgeneration_factor: 1.25        # per-teacher stopping rule at 1.25x quota (doc 00 §0.7)
+filter_ruleset: filters-v1.0
+target_student_tokens: 150000000

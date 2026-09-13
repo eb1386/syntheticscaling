@@ -1,0 +1,16 @@
+# EvalConfig — SECONDARY suite (benchmarks.md §3.2-3.3; doc 00 §0.11). Run by scripts/evaluate.py as an
+# add-on after primary_v1; NOT part of the experiment identity (experiments reference primary_v1).
+# Log-likelihood block (0-shot): arc_challenge, winogrande, boolq (vs majority), mmlu_stem_continuation,
+#   mmlu_continuation (full), commonsense_qa_cloze, blimp, truthfulqa_mc2 (report only).
+# Generative block (greedy): triviaqa_3k (--limit 3000), gsm8k (1B students, gated; flexible-extract primary),
+#   ifeval_lite (max_gen_toks 512; report), format_probe_200 (custom 200-item probe shipped with the repo).
+# The 5-shot ICL probe lives in icl_probe_v1.yaml because num_fewshot is a single value per config.
+name: secondary_v1
+harness: lm-eval
+harness_version: "0.4.13"
+primary_tasks: [sciq, arc_easy, piqa, lambada_openai, openbookqa, social_iqa, hellaswag]
+secondary_tasks: [arc_challenge, winogrande, boolq, mmlu_stem_continuation, mmlu_continuation, commonsense_qa_cloze, blimp, truthfulqa_mc2, triviaqa_3k, gsm8k, ifeval_lite, format_probe_200]
+num_fewshot: 0
+batch_size: 64
+eval_seed: 1234
+nll_sets: [heldout_real_id, heldout_real_ood, heldout_instr]

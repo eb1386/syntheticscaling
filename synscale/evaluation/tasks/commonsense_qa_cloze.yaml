@@ -1,0 +1,28 @@
+# Custom lm-eval task: CommonsenseQA in cloze form (benchmarks.md §2.4, §1.4).
+#
+# The harness default `commonsense_qa` shows the five options in the prompt and scores the
+# letter labels A–E as continuations; students <= 1B are at the floor on that format.
+# Here the option *texts* are scored as continuations of "Question: ...\nAnswer:" and the
+# pre-registered metric is acc_norm (character-length-normalised log-likelihood), as for
+# ARC / OpenBookQA / HellaSwag.  Register with `lm_eval --include_path synscale/evaluation/tasks`.
+task: commonsense_qa_cloze
+dataset_path: tau/commonsense_qa
+training_split: train
+validation_split: validation
+output_type: multiple_choice
+doc_to_text: "Question: {{ question.strip() }}\nAnswer:"
+doc_to_target: "{{ ['A', 'B', 'C', 'D', 'E'].index(answerKey) }}"
+doc_to_choice: "{{ choices['text'] }}"
+should_decontaminate: true
+doc_to_decontamination_query: "Question: {{ question.strip() }}\nAnswer:"
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_norm
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 1.0
+  base_task: commonsense_qa
+  note: "chance = 0.20 (5 options); majority ~0.21 (Table C)"

@@ -1,0 +1,17 @@
+# EvalConfig — PRIMARY suite (doc 00 §0.11; benchmarks.md §3.1). Referenced by every experiment YAML.
+# Tier A (always in P_cc): sciq (acc), arc_easy (acc_norm), piqa (acc_norm), lambada_openai (acc, ppl).
+# Tier B (enter P_cc iff the floor gate passes at the smallest retained S): openbookqa, social_iqa, hellaswag.
+# Zero-shot, lm-eval 0.4.13 pinned, no chat template, seed 1234, batch 64, bf16, --log_samples, final checkpoint only.
+# nll_sets: held-out NLL sets (co-primary continuous outcomes), rendered with the training markers:
+#   heldout_real_id  = FineWeb-Edu held-out (in-distribution web text)
+#   heldout_real_ood = FineWeb (non-Edu) held-out
+#   heldout_instr    = human-written instruction/QA text (Dolly / OASST1 / NQ-open response tokens)
+name: primary_v1
+harness: lm-eval
+harness_version: "0.4.13"
+primary_tasks: [sciq, arc_easy, piqa, lambada_openai, openbookqa, social_iqa, hellaswag]
+secondary_tasks: []
+num_fewshot: 0
+batch_size: 64
+eval_seed: 1234
+nll_sets: [heldout_real_id, heldout_real_ood, heldout_instr]

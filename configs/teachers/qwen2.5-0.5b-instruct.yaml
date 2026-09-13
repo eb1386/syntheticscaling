@@ -1,0 +1,20 @@
+# TeacherConfig — Qwen/Qwen2.5-0.5B-Instruct
+# Role: pre-registered seventh rung (extension; secondary 7-rung fit) — doc 00 §0.6
+# Non-embedding parameters (teacher_selection.md §3, [UNVERIFIED to the last digit]): 0.36B
+# exact_params is the safetensors total; re-check against the pinned revision at download time.
+#
+# >>> revision MUST be replaced by the HF commit SHA before any generation run (never 'main').
+# >>> The launcher refuses to run generation while the placeholder is present.
+name: t0p5b
+family: qwen2.5
+hf_repo: Qwen/Qwen2.5-0.5B-Instruct
+revision: PIN_ME_TO_COMMIT_SHA
+nominal_params: 500000000
+exact_params: 494032768
+variant: instruct
+weight_dtype: bf16
+tensor_parallel: 1
+max_model_len: 8192
+chat_template: hf_default
+thinking_mode: false
+license: "Apache-2.0"

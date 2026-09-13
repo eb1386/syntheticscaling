@@ -1,0 +1,11 @@
+# EvalConfig — 5-shot ICL probe (benchmarks.md §3.2 'ICL probe'): arc_easy and sciq with 5 fixed exemplars.
+# Secondary/diagnostic only; not part of experiment identity.
+name: icl_probe_v1
+harness: lm-eval
+harness_version: "0.4.13"
+primary_tasks: [arc_easy, sciq]
+secondary_tasks: []
+num_fewshot: 5
+batch_size: 64
+eval_seed: 1234
+nll_sets: []

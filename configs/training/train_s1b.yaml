@@ -1,0 +1,56 @@
+# TrainingConfig — s1b (docs/00_locked_methodology.md §0.3-0.5; student_training.md §2.3-2.6, §2.13).
+# Derivation (single source of truth: synscale/config/matrix.py STUDENT_TABLE; tests assert this file matches):
+#   N_tot = 1,005,571,584  N_ne = 956,419,584
+#   D_base = max(20*N_tot, 5e9) = 20.11B, locked (doc 00 §0.4 table) at 20B tokens   (nested prefixes of one seeded FineWeb-Edu shuffle)
+#   batch_tokens = 1,048,576 (512 x 2048)   -> base steps = 19,073.5, phase-2 steps = 762.9
+#   lr_peak = 2e-3 * (N_ne / 25e6)^-0.4 = 4.6553e-04 -> 4.7e-04 (2 significant figures)
+#   warmup_tokens = min(5% of D_base, 1000 steps x batch) = 1,000,000,000 (954 steps)
+#   eval_every_tokens = batch x 20 steps = 20,971,520 (held-out NLL cadence; benchmarks final-only)
+# Base phase = WSD *stable* segment: linear warmup then CONSTANT lr_peak (lr_min_ratio 1.0) up to theta*;
+#   decay_tokens = 0 is deliberate — the decay belongs to the branch (synthetic_phase), not to the base.
+# Phase 2 (every branch, all arms): no re-warm, linear decay to zero over the whole D2 = 800M tokens
+#   (decay_tokens = tokens, lr_min_ratio 0.0), replay_fraction 0.25 (200M already-seen shards, same slot
+#   pattern for every condition), full-sequence loss (Amendment A), packed with intra-document masking.
+# The trainer floors token budgets to whole optimizer steps; the trained-token count is then
+#   identical for every arm within a size (steps x batch_tokens).
+# tokenizer_sha256: replace PENDING with the sha256 of the pinned llama-2 32k SentencePiece model.
+name: train_s1b
+tokenizer: llama2-sp-32k
+tokenizer_sha256: PENDING
+context_length: 2048
+precision: bf16_mixed
+optimizer: adamw
+checkpoint_rule: final
+eval_every_tokens: 20971520
+seed_base: 1
+seed_phase: 1
+base_phase:
+  tokens: 20000000000
+  batch_tokens: 1048576
+  lr_peak: 4.7e-04
+  lr_min_ratio: 1.0
+  schedule: wsd
+  warmup_tokens: 1000000000
+  decay_tokens: 0
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  grad_clip: 1.0
+  loss_mask: all_tokens
+  packing: packed_masked
+  replay_fraction: 0.0
+synthetic_phase:
+  tokens: 800000000
+  batch_tokens: 1048576
+  lr_peak: 4.7e-04
+  lr_min_ratio: 0.0
+  schedule: wsd
+  warmup_tokens: 0
+  decay_tokens: 800000000
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  grad_clip: 1.0
+  loss_mask: all_tokens
+  packing: packed_masked
+  replay_fraction: 0.25

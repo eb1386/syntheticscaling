@@ -1,0 +1,25 @@
+# StudentConfig — s250m: locked shape from docs/00_locked_methodology.md §0.5.
+# Exact counts (synscale/models/param_count.py convention, tied embeddings, RMSNorm gains counted):
+#   total = 247,032,000   non-embedding = 216,312,000   (embedding = vocab_size * d_model = 30,720,000)
+# Family rules: Llama-2 32k SentencePiece tokenizer, tied embeddings, GQA 3:1, head_dim 64,
+# d_ff = 8/3 * d_model exactly, RMSNorm, RoPE theta 1e4, no biases, context 2048,
+# init N(0, 0.02) with 1/sqrt(2L) residual scaling (depth_scaled_init).
+name: s250m
+target_params: 250000000
+n_layers: 22
+d_model: 960
+n_heads: 15
+n_kv_heads: 5
+head_dim: 64
+d_ff: 2560
+vocab_size: 32000
+context_length: 2048
+tie_embeddings: true
+rope_theta: 10000.0
+norm_eps: 1.0e-5
+init_std: 0.02
+depth_scaled_init: true
+activation: swiglu
+norm: rmsnorm
+attention_bias: false
+mlp_bias: false
