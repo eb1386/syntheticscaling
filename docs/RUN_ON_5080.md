@@ -7,9 +7,14 @@ to make it shorter, and what genuinely cannot be done on one consumer card.
 ## TL;DR — two commands
 
 ```bash
-./install.sh local5080     # deps + tokenizer + corpora + teacher models + prompt pool  (one time)
-./run_all.sh local5080     # runs the entire study, resumable; logs to results/local5080/run.log
+./install.sh scaling5080   # deps + tokenizer + corpora + teacher models + prompt pool  (one time)
+./run_all.sh scaling5080   # runs the entire study, resumable; logs to results/scaling5080/run.log
 ```
+
+`scaling5080` is the flagship: a data-scaling-law study (4 students x 4 FP8 teachers 0.5-7B),
+primary outcome = loss vs synthetic-token count, D-axis read from the training curve
+(`docs/22`). `local5080` (teacher-size effects on accuracy, teachers to 14B int4) is retained
+as the alternative framing. Use `scaling5080_fast` for a complete first result in ~1 week.
 
 Before committing weeks, validate the whole pipeline in minutes and then in ~1 hour:
 

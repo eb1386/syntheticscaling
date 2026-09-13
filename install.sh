@@ -5,7 +5,7 @@
 # teacher models (Qwen2.5 AWQ int4), and builds the frozen prompt pool.
 # Re-run safe: each step is skipped if its output already exists.
 set -euo pipefail
-PROFILE="${1:-local5080}"
+PROFILE="${1:-scaling5080}"
 PYTHON="${PYTHON:-python3}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"

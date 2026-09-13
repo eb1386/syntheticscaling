@@ -1,3 +1,4 @@
+<!-- SCALING FRAMING: the single-5080 run reports this as a data-scaling-law study (loss L(D)=E+A*D^-alpha per student x teacher; does alpha/E depend on teacher size; does synthetic scale like real data). See docs/22. The abstract below is the cluster-scale accuracy framing. -->
 <!-- SINGLE-CARD SCOPE NOTE: these drafts describe the full cluster design (5 students, 6-7 teachers to 72B). The single-RTX-5080 run (docs/RUN_ON_5080.md) executes a scoped subset (3 students 25M-250M, 5 teachers 0.5-14B int4); use those axes when reporting a 5080-only result. -->
 # Abstract (draft; ≤ 250 words; every bracketed value is a placeholder to be read from results/index.parquet)
 

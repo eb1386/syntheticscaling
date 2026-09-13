@@ -49,6 +49,9 @@ class Profile:
     dsweep_seeds: int
     primary_eval: str = "primary_v1"
     generation: str = "main_v1"
+    training_prefix: str = "train_"      # experiment YAMLs use configs/training/<prefix><student>.yaml
+    primary_outcome: str = "p_cc"        # "loss" for the scaling study (loss-vs-D), "p_cc" otherwise
+    teacher_precision: str = "awq_marlin"
     notes: str = ""
 
 
@@ -148,7 +151,7 @@ MICRO = Profile(
               TeacherSpec("t3b", _awq("3B"), 3_000_000_000, "awq_marlin",
                           config_path="configs/teachers/qwen2.5-3b-instruct.yaml", max_model_len=2048)),
     controls=("base_only", "matched_real"),
-    d_syn=60_000, d2_tokens=80_000, replay_fraction=0.25,
+    d_syn=100_000, d2_tokens=140_000, replay_fraction=0.25,
     base_tokens={"s_micro": 200_000},
     phase_seeds=1, base_seeds={"s_micro": 1}, tier2_seeds=0, tier2_teachers=(),
     c1_seeds=1, pool_prompts=1500,
@@ -156,7 +159,54 @@ MICRO = Profile(
     notes="Tiny CPU end-to-end validation with MockBackend and a byte tokenizer.",
 )
 
-PROFILES: dict[str, Profile] = {p.name: p for p in (LOCAL5080, LOCAL5080_FAST, SMOKE, MICRO)}
+
+# --- Smaller teachers for the scaling study: 0.5-7B served FP8 (quantized on load), uniform precision.
+#     0.5-3B also fit BF16; a 3B BF16-vs-FP8 bridge cell (ablation) measures the quantisation effect.
+def _fp8(name, size, params):
+    return TeacherSpec(name, _Q.format(size, ""), params, "fp8",
+                       config_path=f"configs/teachers/qwen2.5-{size.lower()}-instruct.yaml", max_model_len=4096)
+
+SCALING_TEACHERS = (
+    _fp8("t0p5b", "0.5B", 500_000_000),
+    _fp8("t1p5b", "1.5B", 1_500_000_000),
+    _fp8("t3b",   "3B",   3_000_000_000),
+    _fp8("t7b",   "7B",   7_000_000_000),
+)
+
+# Flagship study for one RTX 5080: does synthetic-data scaling depend on teacher size?
+# Student S x teacher T grid; the data-quantity axis D comes from the loss-vs-tokens curve
+# recorded during each synthetic run (train_log.jsonl), so no separate D-sweep runs are needed.
+SCALING5080 = Profile(
+    name="scaling5080",
+    students=("s025m", "s050m", "s100m", "s250m"),
+    teachers=SCALING_TEACHERS,
+    controls=("base_only", "matched_real", "human_instruct"),
+    d_syn=400_000_000, d2_tokens=530_000_000, replay_fraction=0.25,
+    base_tokens={"s025m": 500_000_000, "s050m": 1_000_000_000, "s100m": 2_000_000_000, "s250m": 4_900_000_000},
+    phase_seeds=3, base_seeds={"s025m": 3, "s050m": 1, "s100m": 1, "s250m": 1},
+    tier2_seeds=0, tier2_teachers=(),
+    c1_seeds=3, pool_prompts=1_500_000,
+    dsweep_student=None, dsweep_teachers=(), dsweep_levels=(), dsweep_seeds=0,
+    training_prefix="train_scaling_", primary_outcome="loss", teacher_precision="fp8",
+    notes="Scaling-laws study: 4 students x 4 FP8 teachers (0.5-7B); D-axis from loss-vs-tokens curves.",
+)
+
+SCALING5080_FAST = Profile(
+    name="scaling5080_fast",
+    students=("s025m", "s050m", "s100m"),
+    teachers=SCALING_TEACHERS,
+    controls=("base_only", "matched_real", "human_instruct"),
+    d_syn=250_000_000, d2_tokens=330_000_000, replay_fraction=0.25,
+    base_tokens={"s025m": 500_000_000, "s050m": 1_000_000_000, "s100m": 2_000_000_000},
+    phase_seeds=2, base_seeds={"s025m": 2, "s050m": 1, "s100m": 1},
+    tier2_seeds=0, tier2_teachers=(),
+    c1_seeds=2, pool_prompts=800_000,
+    dsweep_student=None, dsweep_teachers=(), dsweep_levels=(), dsweep_seeds=0,
+    training_prefix="train_scaling_", primary_outcome="loss", teacher_precision="fp8",
+    notes="Reduced scaling study (~1 week): 3 students x 4 FP8 teachers.",
+)
+
+PROFILES: dict[str, Profile] = {p.name: p for p in (SCALING5080, SCALING5080_FAST, LOCAL5080, LOCAL5080_FAST, SMOKE, MICRO)}
 
 
 def get_profile(name: str) -> Profile:

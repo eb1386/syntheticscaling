@@ -1,5 +1,14 @@
 # 01. Final Research Question and Testable Hypotheses
 
+> **Scaling-laws framing (single-5080 study).** On one RTX 5080 the study is run as a
+> *data-scaling-law* experiment: the primary outcome is held-out loss as a function of
+> synthetic-token count D, fit as L(D)=E+A·D^(-alpha) per student x teacher cell, and the
+> headline question is whether the scaling parameters (alpha, E) depend on teacher size and
+> whether synthetic data scales like real data. See `docs/22_scaling_laws_analysis.md`. The
+> hypotheses below (H1-H5, teacher-size effects on a fixed-budget outcome) remain the
+> accuracy/secondary view and the cluster-scale framing.
+
+
 Tags: **[fact]** established; **[lit]** literature-supported; **[hyp]** hypothesis; **[choice]** methodological choice; **[assume]** assumption to be measured.
 
 ## 1.1 Final research question

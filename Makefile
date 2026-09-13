@@ -1,5 +1,5 @@
 # Single-RTX-5080 study — common commands.
-PROFILE ?= local5080
+PROFILE ?= scaling5080
 PYTHON  ?= python3
 
 .PHONY: help install budget smoke micro run run-fast test clean

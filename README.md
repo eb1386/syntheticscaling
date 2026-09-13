@@ -1,84 +1,102 @@
-# Which Teacher for Which Student?
-### Teacher-size effects of synthetic annealing data for 25M–1B language models
+# Synthetic Data Scaling Laws for Small Language Models
 
-Research-ready specification, implementation, and paper drafts for a controlled study of **teacher model size** in synthetic-data generation for small student language models. The project was previously titled "Synthetic Scaling Laws: Optimal Teacher Model Size for Synthetic Data Generation in Small Language Models"; the title was changed because the design supports transfer curves and a descriptive optimum relation, not a scaling law (see `docs/00_locked_methodology.md` §0.1).
+**Question.** When you train a small language model on synthetic data written by a teacher
+model, does the data follow a *scaling law* — does loss keep falling predictably as you add
+more synthetic tokens — and **does that scaling law depend on how big the teacher is?**
 
-**Core question.** For a student of size S ∈ {25M, 100M, 250M, 500M, 1B} trained to a fixed base state on real data, which teacher size T ∈ {1.5B, 3B, 7B, 14B, 32B, 72B} (Qwen2.5-Instruct; 0.5B as an extension) produces the most useful 600M tokens of synthetic annealing data under one frozen generation protocol, how does that depend on S, and how does it change when generation cost is charged?
+This repository runs that experiment end to end on a **single RTX 5080 (16 GB)**. It trains
+a family of small students (25M–250M) on synthetic data from four teachers (0.5B–7B), and
+fits the data-scaling law `L(D) = E + A·D^(−α)` for every student × teacher cell, where `D`
+is the number of synthetic tokens. It then tests whether the exponent `α`, the coefficient
+`A`, and the irreducible loss `E` change with teacher size, and whether synthetic data scales
+like an equal amount of real web text.
 
-## Run it on a single RTX 5080
+Everything is measured in **loss** (not accuracy), which is the right, floor-free quantity
+for scaling laws and is what makes this feasible at 25M–250M parameters.
+
+## Run it (two commands)
 
 ```bash
-./install.sh local5080     # deps + tokenizer + corpora + Qwen2.5 int4 teachers + prompt pool (one time)
-./run_all.sh local5080     # runs the whole study end to end, resumable
+./install.sh scaling5080     # deps + tokenizer + data + teacher models + prompt pool (one time)
+./run_all.sh scaling5080     # runs the whole study; resumable — re-run to continue
 ```
 
-Validate first (minutes to an hour), and see the time estimate:
+Before committing days of GPU time, validate the whole pipeline and see the time estimate:
 
 ```bash
-make micro                       # CPU end-to-end validation (no GPU) — verified in this repo
-make smoke                       # GPU validation with real models, tiny budget (~1-3h)
-make budget PROFILE=local5080    # GPU-hours and wall-clock estimate
+make micro                        # CPU, minutes: runs every stage on a toy model (no GPU)
+make smoke                        # GPU, ~1-3h: real Qwen teachers, tiny budget
+make budget PROFILE=scaling5080   # prints the GPU-hour / wall-clock estimate
 ```
 
-**Honest time cost on one 16 GB RTX 5080** (`synscale/analysis/compute_budget.py`; serial):
+Run inside `tmux`/`screen` so it survives disconnects.
 
-| Profile | Scope | Total GPU-hours | Wall-clock |
-|---|---|---|---|
-| `local5080` | 3 students (25M-250M) x 5 teachers (0.5-14B int4) + controls, 3-5 seeds, D-sweep | ~651 | **~27 days (~34 with overhead)** |
-| `local5080_fast` | 2 students x 4 teachers (<=7B), lower power | ~167 | ~7 days (~9 with overhead) |
-| `smoke` | real models, tiny budget | ~1-3 | ~1-3 hours |
+## How long on one 5080
 
-The full study is about a month of continuous GPU time — the real cost of a complete
-teacher x student grid with controls and seeds on one consumer card. `docs/RUN_ON_5080.md`
-explains the scoping (a single 5080 cannot serve 32B/72B teachers or train 1B students in
-reasonable time), the knobs to shorten it, and what to rent a bigger card for.
+`make budget` (numbers are GPU-hours = wall-clock, since one card runs serially):
 
-## Deliverables
-
-| # | Deliverable | Location |
+| Profile | Scope | Wall-clock |
 |---|---|---|
-| 0 | Locked methodology (decision record; binding) | `docs/00_locked_methodology.md` |
-| 1–2 | Final research question; testable hypotheses | `docs/01_research_question_and_hypotheses.md` |
-| — | One-page design overview | `docs/02_design_overview.md` |
-| 3 | Novelty assessment | `docs/03_novelty_assessment.md` |
-| 4 | Literature-review tables and novelty matrix | `docs/04_literature_review.md` |
-| 5 | Pilot design | `docs/05_pilot_design.md` |
-| 6 | Full experimental matrix | `docs/06_full_experimental_matrix.md` |
-| 7 | Exact student architectures (derivation) | `docs/07_student_architectures.md`, `synscale/models/param_count.py` |
-| 8 | Teacher-model selection | `docs/08_teacher_selection.md` |
-| 9 | Synthetic-data generation methodology | `docs/09_synthetic_data_methodology.md` |
-| 10 | Student-training methodology | `docs/10_student_training_methodology.md` |
-| 11 | Benchmark suite | `docs/11_benchmark_suite.md` |
-| 12 | Statistical analysis plan (pre-registration grade) | `docs/12_statistical_analysis_plan.md` |
-| 13 | Cost model and hardware facts | `docs/13_cost_model.md` |
-| 14 | Synthetic Transfer Efficiency definition | `docs/14_synthetic_transfer_efficiency.md` |
-| 15 | Ablation plan (ranked) | `docs/15_ablation_plan.md` |
-| 16 | Compute budget (pilot, full, per hardware profile) | `docs/16_compute_budget.md` |
-| 17 | Repository architecture | `docs/17_repository_architecture.md` |
-| 18 | Experiment-tracking standard | `docs/18_experiment_tracking_standard.md` |
-| 19 | Failure-mode register | `docs/19_failure_mode_register.md` |
-| 19 | Failure-mode register | `docs/19_failure_mode_register.md` |
-| 20 | Figure/table plan | `docs/20_figure_table_plan.md` |
-| 21 | Paper outline | `docs/21_paper_outline.md` |
-| 22 | Draft Methods | `paper/methods_draft.md` |
-| 23 | Draft Introduction | `paper/introduction_draft.md` |
-| 24 | Draft Abstract | `paper/abstract_draft.md` |
-| 25 | Next implementation tasks in dependency order | `docs/25_implementation_tasks.md` |
+| `scaling5080` | 4 students (25M–250M) × 4 teachers (0.5–7B) + real/human controls, 3 seeds | **~23 days (~28 with overhead)** |
+| `scaling5080_fast` | 3 students (25M–100M) × 4 teachers, 2 seeds | **~7 days (~9 with overhead)** |
+| `smoke` | real models, tiny budget | ~1–3 hours |
+| `micro` | CPU validation, toy model | minutes |
 
-## Repository
+Start with `scaling5080_fast` for a complete first result in a week; run `scaling5080` for the
+full-depth version. The data-quantity axis `D` is read from each run's training curve, so you
+get ~20 points on the scaling curve per cell for free — no extra runs. See
+[`docs/RUN_ON_5080.md`](docs/RUN_ON_5080.md) for the scoping, knobs, and what needs a bigger card.
+
+## What you get
+
+After a run, `results/<profile>/analysis/` contains:
+
+- **`scaling_instr/scaling_fits.csv`** — `E`, `A`, `α` for every student × teacher cell (the scaling laws).
+- **`scaling_instr/scaling_report.json`** — the teacher-dependence tests (does `α`/`E` move with teacher size?) and the synthetic-vs-real comparison.
+- **`cell_table.csv`, `transfer_curves_*.png`, `sxt_heatmap_*.png`** — the accuracy view (secondary).
+- One `manifest.json` per run with git commit, config hash, seeds, and hardware (full provenance).
+
+## What the experiment varies (the axes)
+
+| Axis | Values | Why |
+|---|---|---|
+| Teacher size `T` | Qwen2.5-Instruct 0.5B, 1.5B, 3B, 7B (FP8, quantized on load) | the question is about teacher size |
+| Student size `S` | 25M, 50M, 100M, 250M (one LLaMA-style family, shared tokenizer) | does the answer depend on the student? |
+| Synthetic tokens `D` | ~20 points from 25M up to 400M, read from the training curve | the scaling-law axis |
+| Controls | C1 = equal real web tokens, C1b = human Q&A, C0 = base model | is synthetic data better than real data, and than nothing? |
+
+Teacher data is generated once per teacher under one frozen prompt pool, one decoding config,
+and teacher-agnostic filters, at equal student-tokenizer tokens — so the **only** thing that
+differs between teacher conditions is the teacher (see `docs/09`).
+
+## Repository layout
 
 ```
-configs/        students, teachers, generation, training, evaluation fragments; generated experiment YAMLs
-synscale/       package: config, tracking, models, generation, training, evaluation, analysis
-scripts/        make_matrix, launch, build_pool, generate, build_dataset, pretrain_base, train, evaluate, build_index, analyze, compute_budget
-tests/          unit tests (CPU only; torch-dependent tests skip if torch is absent)
-docs/           deliverables 00–25
-paper/          abstract, introduction, methods drafts; figures/
-results/        manifests and small eval JSON only (checkpoints and datasets live outside git)
+synscale/            the package
+  config/            config schemas, YAML loader, hardware/scope profiles
+  models/            LLaMA-style student (RMSNorm, RoPE, SwiGLU, GQA) + exact param counts
+  generation/        prompt pool, vLLM teacher backend, filters, subsampling, runner
+  training/          WSD trainer, deterministic data/branch builder, schedules
+  evaluation/        self-contained multiple-choice + NLL scorer
+  analysis/          scaling-law fits, aggregates, T*/STE, plots, compute budget
+  pipeline.py        the orchestrator that runs the whole study from a profile
+scripts/             install/prepare/generate/train/evaluate/analyze entry points
+configs/             student, teacher, training, generation, evaluation fragments
+docs/                the full methodology, scaling-law method (docs/22), run guide, budget
+paper/               abstract / introduction / methods drafts
+tests/               60 unit tests (CPU; torch/vllm tests skip if unavailable)
 ```
 
-Install: `pip install -e .[dev]` (add `[train]`, `[gen]`, `[eval]`, `[analysis]` on the machines that need them). Tests: `python -m pytest -q`. Experiment matrix: `python scripts/make_matrix.py --all`. Compute budget: `python scripts/compute_budget.py --study both --profile reference`.
+Install: `pip install -e ".[train,gen,eval,analysis,dev]"`. Tests: `make test`.
 
-## Status
+## Status and honesty
 
-Specification and pipeline code are complete to the extent that can be verified without GPUs (see `docs/25_implementation_tasks.md` for what remains: throughput calibration, real vLLM/lm-eval runs, the pilot). No experimental results exist; every number in the documents is a design parameter, a literature value, or an assumption marked for measurement.
+The whole pipeline runs end to end (verified on CPU with `make micro`; 60 tests pass). It has
+**not** yet been run on a GPU here — the throughput/time numbers are formula estimates marked
+in `synscale/analysis/compute_budget.py` and should be confirmed by the pilot on day one
+(`docs/05`). What remains to turn a launch into a paper is listed in `docs/25`. A single 5080
+cannot serve teachers above ~7B or train students above ~250M in reasonable time; the full
+teacher/student range needs a bigger or rented card (`docs/RUN_ON_5080.md`).
+
+Full methodology and design rationale: [`docs/00_locked_methodology.md`](docs/00_locked_methodology.md).
+Scaling-law analysis method: [`docs/22_scaling_laws_analysis.md`](docs/22_scaling_laws_analysis.md).

@@ -1,0 +1,17 @@
+# Student s050m — derived by synscale/models/param_count.search_shapes (L9 d576, total 50.29M, +0.6%).
+# Fills the gap between s025m and s100m for a 4-point student-size axis in the scaling study.
+name: s050m
+target_params: 50000000
+n_layers: 9
+d_model: 576
+n_heads: 9
+n_kv_heads: 3
+head_dim: 64
+d_ff: 1536
+vocab_size: 32000
+context_length: 2048
+tie_embeddings: true
+rope_theta: 10000.0
+norm_eps: 1.0e-5
+init_std: 0.02
+depth_scaled_init: true

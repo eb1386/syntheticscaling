@@ -53,5 +53,15 @@ def analyze_index(index_path: str | Path, out_dir: str | Path) -> dict[str, Any]
     except Exception as e:
         report["notes"].append(f"tstar skipped: {e}")
 
+    # scaling-law fits (loss vs synthetic tokens) — the core investigation (docs/22)
+    try:
+        from synscale.analysis.scaling import run_scaling_analysis
+        results_dir = Path(index_path).parent
+        for es in ("instr", "base_heldout"):
+            rep = run_scaling_analysis(results_dir, out_dir=out_dir / f"scaling_{es}", eval_set=es)
+            report[f"scaling_{es}"] = {k: rep.get(k) for k in ("n_runs_with_curves", "note")}
+    except Exception as e:
+        report["notes"].append(f"scaling analysis skipped: {e}")
+
     (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
     return report

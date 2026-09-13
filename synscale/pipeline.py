@@ -90,8 +90,8 @@ class State:
 def _student_frag(student: str) -> str:
     return f"configs/students/{student}.yaml"
 
-def _training_frag(student: str) -> str:
-    return f"configs/training/train_{student}.yaml"
+def _training_frag(student: str, prefix: str = "train_") -> str:
+    return f"configs/training/{prefix}{student}.yaml"
 
 _EVAL_FRAG = "configs/evaluation/primary_v1.yaml"
 _GEN_FRAG = "configs/generation/main_v1.yaml"
@@ -107,7 +107,7 @@ def make_experiment_yaml(profile: Profile, *, student: str, arm: str, seed_base:
         "arm": arm,
         "variant": variant,
         "student": _student_frag(student),
-        "training": _training_frag(student),
+        "training": _training_frag(student, profile.training_prefix),
         "evaluation": _EVAL_FRAG,
     }
     ov: dict[str, Any] = {"training.seed_base": seed_base, "training.seed_phase": seed_phase}
@@ -356,10 +356,12 @@ def branch_stage(profile: Profile, job: BranchJob, *, corpora: dict, gen_dirs: d
     branch_stem = branch_dir / eid
     treatment = SequenceSource.open(str(treat_stem), seq_len)
     replay = ShardedSource([SequenceSource.open(corpora["base_train"], seq_len)])
-    treat_tokens = treatment.n_sequences * seq_len if hasattr(treatment, "n_sequences") else None
     d2 = profile.d2_tokens
-    # shrink d2 to available treatment if needed (micro/edge); keeps replay_fraction
-    avail_treat = getattr(treatment, "n_sequences", None)
+    # shrink d2 to available treatment if needed (edge/toy); keeps replay_fraction, avoids shortfall
+    try:
+        avail_treat = len(treatment)
+    except TypeError:
+        avail_treat = None
     if avail_treat is not None:
         max_d2 = int(avail_treat * seq_len / (1 - profile.replay_fraction))
         d2 = min(d2, max_d2)
