@@ -1,115 +1,182 @@
 # Synthetic Data Scaling Laws for Small Language Models
 
-**Question.** When you train a small language model on synthetic data written by a teacher
-model, does the data follow a *scaling law* — does loss keep falling predictably as you add
-more synthetic tokens — and **does that scaling law depend on how big the teacher is?**
+When you train a small language model on synthetic data written by a larger teacher model,
+does the data obey a scaling law? That is, does loss keep falling predictably as you add more
+synthetic tokens, and does that behavior depend on how big the teacher is? This repository is a
+controlled experiment built to answer that.
 
-This repository runs that experiment end to end on a **single RTX 5080 (16 GB)**. It trains
-a family of small students (25M–250M) on synthetic data from four teachers (0.5B–7B), and
-fits data-scaling curves for every student × teacher cell (primary form `L(D) = E + A·D^(−α)`,
-where `D` is the number of synthetic tokens and `E` is the estimated asymptote over the observed
-range, *not* the true irreducible loss). It then tests whether the exponent `α`, the coefficient
-`A`, and the asymptote `E` change with teacher size, and reports a **synthetic-data multiplier**:
-how many real tokens one synthetic token is worth. Three functional forms are fit and compared
-on held-out checkpoints, and uncertainty comes from independent seeds, not from checkpoints on
-one trajectory.
+## The question, precisely
 
-Everything is measured in **loss** (not accuracy), which is the right, floor-free quantity
-for scaling laws and is what makes this feasible at 25M–250M parameters.
+We measure held-out loss `L` as a joint function of three quantities:
 
-## Run it (two commands)
-
-```bash
-./install.sh scaling5080     # deps + tokenizer + data + teacher models + prompt pool (one time)
-./run_all.sh scaling5080     # runs the whole study; resumable — re-run to continue
+```
+L = f(S, T, D)
 ```
 
-Before committing days of GPU time, validate the whole pipeline and see the time estimate:
+* `S` is the student size: 25M, 50M, 100M, 250M parameters.
+* `T` is the teacher size: Qwen2.5-Instruct at 0.5B, 1.5B, 3B, 7B.
+* `D` is the number of synthetic tokens the student has trained on.
 
-```bash
-make micro                        # CPU, minutes: runs every stage on a toy model (no GPU)
-make smoke                        # GPU, ~1-3h: real Qwen teachers, tiny budget
-make budget PROFILE=scaling5080   # prints the GPU-hour / wall-clock estimate
+For every student and teacher pair we fit a data-scaling curve over `D` and then ask three
+things. Does the scaling exponent depend on teacher size, so that better data keeps paying off
+for longer? Does the asymptote depend on teacher size, so that better data reaches a lower floor?
+And does synthetic data behave like real web text, or better, or worse? The headline number is a
+synthetic-data multiplier: how many real tokens one synthetic token is worth.
+
+This is a different, stronger question than "which teacher gives the highest benchmark score." It
+asks whether teacher scale changes the marginal value of another synthetic token, whether that
+change depends on student capacity, and how synthetic data compares to an equal amount of real
+data.
+
+## Why loss, and why matched checkpoints
+
+Everything is measured in loss, not accuracy. Loss is the quantity scaling laws are defined on,
+it moves smoothly from the first tokens of training, and it has far higher signal to noise than
+multiple-choice accuracy, which sits at chance for 25M to 100M models on most tasks. Accuracy is
+kept only as a secondary transfer-breadth check.
+
+Each student is pretrained once on real web text (FineWeb-Edu) to a stable checkpoint. Every
+condition then branches from that same checkpoint and runs an identical short annealing phase, in
+which the only thing that differs is the data it sees: synthetic text from one teacher, an equal
+number of fresh real web tokens (the control C1), human question-answer text (C1b), or nothing new
+(C0). Because all conditions start from the same checkpoint and share every hyperparameter, a
+difference in outcome is attributable to the data source alone.
+
+The data-quantity axis `D` comes for free. The trainer evaluates held-out loss every 20M tokens
+during the annealing phase, so one training run yields roughly 20 points on the `L(D)` curve. We
+do not run a separate job per data quantity. This is what makes a broad grid affordable on one
+consumer GPU.
+
+## What the scaling analysis does
+
+For each student and teacher cell we fit three functional forms and compare them on held-out
+checkpoints (the last third of each curve), so a form that only interpolates is penalized:
+
+```
+power with asymptote :  L(D) = E + A * D^(-alpha)     (primary)
+log                  :  L(D) = a - b * log D
+pure power           :  L(D) = A * D^(-alpha)
 ```
 
-Run inside `tmux`/`screen` so it survives disconnects.
+Here `E` is the estimated asymptote over the observed range, reported as `L_inf_hat`. It is not
+claimed to be the model's true irreducible loss, because over a limited range of `D` the three
+parameters trade off against each other.
 
-## How long on one 5080
+Three statistical safeguards are built in.
 
-`make budget` (numbers are GPU-hours = wall-clock, since one card runs serially):
+1. Checkpoints on one training curve are not independent, because they come from a single
+   optimization trajectory. We fit a curve separately per seed, treat each independent run as one
+   observation of the parameters, and take uncertainty from the spread across seeds. Cells with a
+   single seed are flagged so their parameters are never given a false confidence interval.
+2. Model choice is decided by held-out fit, not by in-sample residuals, and the asymptote is
+   labelled as an estimate rather than a physical constant.
+3. Evaluation is teacher-independent. Loss is measured on fixed held-out real web text, fixed
+   held-out human instruction text, and downstream accuracy. We never score a student on its own
+   teacher's synthetic distribution, which would reward imitation rather than learning.
 
-| Profile | Scope | Wall-clock |
+## The synthetic-data multiplier
+
+For each student and teacher we invert the fitted curve for the teacher and for the matched-real
+control, then compute the ratio of real tokens to synthetic tokens needed to reach the same loss.
+If a 100M student needs 200M real tokens to reach a loss that 120M tokens from the 7B teacher also
+reach, the multiplier is about 1.67. The statement it licenses is concrete: one token from the 7B
+teacher is worth roughly 1.6 real tokens for a 100M student over this loss range. Combined with the
+measured cost of generating those tokens, it answers whether the extra value was worth paying for.
+This replaces the earlier bespoke efficiency metric, which is kept only as an appendix.
+
+## What the experiment varies
+
+| Axis | Values | Why it is here |
 |---|---|---|
-| `scaling5080` | 4 students (25M–250M) × 4 teachers (0.5–7B) + real/human controls, 3 seeds | **~23 days (~28 with overhead)** |
-| `scaling5080_fast` | 3 students (25M–100M) × 4 teachers, 2 seeds | **~7 days (~9 with overhead)** |
-| `smoke` | real models, tiny budget | ~1–3 hours |
-| `micro` | CPU validation, toy model | minutes |
+| Teacher size `T` | Qwen2.5-Instruct 0.5B, 1.5B, 3B, 7B (FP8) | the question is about teacher size |
+| Student size `S` | 25M, 50M, 100M, 250M, one LLaMA-style family, shared 16k tokenizer | does the answer depend on the student |
+| Synthetic tokens `D` | about 20 points from 25M up to 400M, read from the training curve | the scaling-law axis |
+| Controls | C1 equal real tokens, C1b human question-answer, C0 base model | is synthetic data better than real data, or than nothing |
 
-**Run `scaling5080_fast` first as the pilot** (~1 week): it measures real throughput, variance,
-OOM behaviour, filter yield and effect sizes on this exact hardware. If the pilot is clean, run
-the full `scaling5080` grid for the paper. Three student sizes are enough to debug the
-relationship; the fourth makes the student × teacher interaction far more convincing. The data-quantity axis `D` is read from each run's training curve, so you
-get ~20 points on the scaling curve per cell for free — no extra runs. See
-[`docs/RUN_ON_5080.md`](docs/RUN_ON_5080.md) for the scoping, knobs, and what needs a bigger card.
+Teacher data is generated once per teacher under one frozen prompt pool, one decoding
+configuration, and teacher-agnostic filters, at equal student-tokenizer tokens, so the only thing
+that differs between teacher conditions is the teacher. All students share one 16k byte-level BPE
+trained on the real corpus, so the 25M model is not dominated by its embedding table and the
+student-size axis stays clean. Teachers generate in their own tokenizer and their text is
+retokenized with the student tokenizer.
 
-## What you get
+## What a result looks like
 
-After a run, `results/<profile>/analysis/` contains:
+Any of the following is a clean, reportable outcome, and the study is designed so a negative is as
+informative as a positive:
 
-- **`scaling_instr/scaling_fits.csv`** — `E`, `A`, `α` for every student × teacher cell (the scaling laws).
-- **`scaling_instr/scaling_report.json`** — the teacher-dependence tests (does `α`/`E` move with teacher size?) and the synthetic-vs-real comparison.
-- **`cell_table.csv`, `transfer_curves_*.png`, `sxt_heatmap_*.png`** — the accuracy view (secondary).
-- One `manifest.json` per run with git commit, config hash, seeds, and hardware (full provenance).
+* Synthetic data does not scale: loss is flat in `D`. The premise fails.
+* It scales but is teacher-independent: the exponent and asymptote do not move with teacher size.
+  A tidy negative on the headline question.
+* It scales and is teacher-dependent: the exponent rises and the asymptote falls with teacher
+  size. Report the slopes and whether they themselves depend on student size.
+* Synthetic beats real: some teacher reaches a lower asymptote than matched real tokens. Report
+  which teacher sizes achieve it and the multiplier.
 
-## What the experiment varies (the axes)
+A particularly interesting shape would be teachers above 3B producing near-identical curves for a
+25M student while remaining distinguishable for a 250M student, which would be a teacher-capacity by
+student-capacity interaction.
 
-| Axis | Values | Why |
-|---|---|---|
-| Teacher size `T` | Qwen2.5-Instruct 0.5B, 1.5B, 3B, 7B (FP8, quantized on load) | the question is about teacher size |
-| Student size `S` | 25M, 50M, 100M, 250M (one LLaMA-style family, shared tokenizer) | does the answer depend on the student? |
-| Synthetic tokens `D` | ~20 points from 25M up to 400M, read from the training curve | the scaling-law axis |
-| Controls | C1 = equal real web tokens, C1b = human Q&A, C0 = base model | is synthetic data better than real data, and than nothing? |
+After a run, `results/<profile>/analysis/` holds `scaling_instr/scaling_fits.csv` (E, A, alpha per
+cell), `scaling_instr/scaling_report.json` (the teacher-dependence tests and the multipliers), the
+secondary accuracy tables and figures, and one manifest per run recording git commit, config hash,
+seeds, and hardware.
 
-Teacher data is generated once per teacher under one frozen prompt pool, one decoding config,
-and teacher-agnostic filters, at equal student-tokenizer tokens — so the **only** thing that
-differs between teacher conditions is the teacher (see `docs/09`).
+## Running it
+
+Two commands. The first installs dependencies, trains the tokenizer, downloads and tokenizes the
+corpora, fetches the teacher models, and builds the prompt pool. The second runs the whole study
+and is resumable, so re-running continues where it left off.
+
+```bash
+./install.sh scaling5080
+./run_all.sh scaling5080
+```
+
+Validate the pipeline first, and get the time estimate, without committing days of compute:
+
+```bash
+make micro                        # CPU, minutes: runs every stage on a toy model
+make smoke                        # GPU, about 1 to 3 hours: real teachers, tiny budget
+make budget PROFILE=scaling5080   # GPU-hours and wall-clock estimate
+```
+
+Run `scaling5080_fast` first as the pilot, about one week, to measure throughput, seed variance,
+and effect sizes on the real card. If it is clean, run the full `scaling5080` grid, about three to
+four weeks on a single 16 GB card, for the paper. Details, hardware notes, and knobs to shorten the
+run are in `docs/RUN_ON_5080.md`.
 
 ## Repository layout
 
 ```
 synscale/            the package
-  config/            config schemas, YAML loader, hardware/scope profiles
-  models/            LLaMA-style student (RMSNorm, RoPE, SwiGLU, GQA) + exact param counts
+  config/            config schemas, YAML loader, hardware and scope profiles
+  models/            LLaMA-style student (RMSNorm, RoPE, SwiGLU, GQA) and exact parameter counts
   generation/        prompt pool, vLLM teacher backend, filters, subsampling, runner
-  training/          WSD trainer, deterministic data/branch builder, schedules
-  evaluation/        self-contained multiple-choice + NLL scorer
-  analysis/          scaling-law fits, aggregates, T*/STE, plots, compute budget
+  training/          WSD trainer, deterministic data and branch builder, schedules
+  evaluation/        self-contained multiple-choice and NLL scorer
+  analysis/          scaling-law fits, aggregates, plots, compute budget
   pipeline.py        the orchestrator that runs the whole study from a profile
-scripts/             install/prepare/generate/train/evaluate/analyze entry points
+scripts/             install, prepare, generate, train, evaluate, analyze entry points
 configs/             student, teacher, training, generation, evaluation fragments
-docs/                the full methodology, scaling-law method (docs/22), run guide, budget
-paper/               abstract / introduction / methods drafts
-tests/               60 unit tests (CPU; torch/vllm tests skip if unavailable)
+docs/                methodology, scaling-law method (docs/22), locked decisions (docs/23)
+paper/               abstract, introduction, methods drafts
+tests/               60 unit tests, CPU only, torch and vllm tests skip if unavailable
 ```
 
-Install: `pip install -e ".[train,gen,eval,analysis,dev]"`. Tests: `make test`.
+Install for development with `pip install -e ".[train,gen,eval,analysis,dev]"`. Run tests with
+`make test`.
 
-## Ambition and honesty
+## Status and honesty
 
-This is built to a **NeurIPS-quality methodological standard** (pre-registered tests, matched
-checkpoints, teacher-independent evaluation, seed-level uncertainty). Whether a result belongs
-at a main conference depends on what it shows and its novelty against prior work — a clean
-*negative* (all teachers ≥1.5B give statistically indistinguishable scaling curves) can be as
-useful as a positive, but only with strong controls. The repo does not claim the result in advance.
+The whole pipeline runs end to end and is verified on CPU with `make micro`, and 60 unit tests
+pass. It has not yet run on a GPU here, so the timing numbers are formula estimates marked in
+`synscale/analysis/compute_budget.py` and should be confirmed by the pilot. This is built to a
+NeurIPS-quality methodological standard, meaning pre-registered tests, matched checkpoints,
+teacher-independent evaluation, and seed-level uncertainty. Whether any result belongs at a main
+conference depends on what it shows and its novelty against prior work, and the repository does not
+claim the result in advance.
 
-## Status
-
-The whole pipeline runs end to end (verified on CPU with `make micro`; 60 tests pass). It has
-**not** yet been run on a GPU here — the throughput/time numbers are formula estimates marked
-in `synscale/analysis/compute_budget.py` and should be confirmed by the pilot on day one
-(`docs/05`). What remains to turn a launch into a paper is listed in `docs/25`. A single 5080
-cannot serve teachers above ~7B or train students above ~250M in reasonable time; the full
-teacher/student range needs a bigger or rented card (`docs/RUN_ON_5080.md`).
-
-Full methodology and design rationale: [`docs/00_locked_methodology.md`](docs/00_locked_methodology.md).
-Scaling-law analysis method: [`docs/22_scaling_laws_analysis.md`](docs/22_scaling_laws_analysis.md).
+Full methodology: `docs/00_locked_methodology.md`. Scaling-law method: `docs/22_scaling_laws_analysis.md`.
+Locked design decisions: `docs/23_locked_review_decisions.md`. What remains before a paper:
+`docs/25_implementation_tasks.md`.
