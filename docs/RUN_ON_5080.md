@@ -47,7 +47,7 @@ This is a genuine 3×5 teacher×student grid with matched-real and human-Q&A con
 
 | Profile | base | generation | phase-2 train | eval | **total GPU-h** | **wall-clock** | energy |
 |---|---|---|---|---|---|---|---|
-| **local5080** (full, NeurIPS-scale) | 142 | 188 | 289 | 32 | **651** | **~27 days (≈34 with 1.25× overhead)** | ~309 kWh (~$46) |
+| **local5080** (accuracy framing, full) | 142 | 188 | 289 | 32 | **651** | **~27 days (≈34 with 1.25× overhead)** | ~309 kWh (~$46) |
 | **local5080_fast** (complete, lower power) | 47 | 51 | 53 | 16 | **167** | **~7 days (≈9 with overhead)** | ~78 kWh (~$12) |
 | **smoke** (real models, tiny budget) | — | — | — | — | ~1–3 | ~1–3 hours | negligible |
 | **micro** (CPU validation) | — | — | — | — | — | minutes (CPU) | negligible |

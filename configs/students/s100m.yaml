@@ -1,25 +1,19 @@
-# StudentConfig — s100m: locked shape from docs/00_locked_methodology.md §0.5.
-# Exact counts (synscale/models/param_count.py convention, tied embeddings, RMSNorm gains counted):
-#   total = 100,092,672   non-embedding = 75,516,672   (embedding = vocab_size * d_model = 24,576,000)
-# Family rules: Llama-2 32k SentencePiece tokenizer, tied embeddings, GQA 3:1, head_dim 64,
-# d_ff = 8/3 * d_model exactly, RMSNorm, RoPE theta 1e4, no biases, context 2048,
-# init N(0, 0.02) with 1/sqrt(2L) residual scaling (depth_scaled_init).
+# Student s100m (16k BPE family, docs/07 amendment / user lock item 4).
+# Derived by param_count.search_shapes(vocab=16384): total=100,685,568, non-emb=88,102,656, embedding share 12% (+0.7% of target).
+# A 16k vocab (vs 32k) keeps embeddings from dominating the 25M model, so the
+# student-size axis is not distorted by tokenizer overhead.
 name: s100m
 target_params: 100000000
-n_layers: 12
+n_layers: 14
 d_model: 768
 n_heads: 12
 n_kv_heads: 4
 head_dim: 64
 d_ff: 2048
-vocab_size: 32000
+vocab_size: 16384
 context_length: 2048
 tie_embeddings: true
 rope_theta: 10000.0
-norm_eps: 1.0e-5
+norm_eps: 1.0e-05
 init_std: 0.02
 depth_scaled_init: true
-activation: swiglu
-norm: rmsnorm
-attention_bias: false
-mlp_bias: false

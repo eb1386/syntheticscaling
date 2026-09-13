@@ -26,19 +26,38 @@ import numpy as np
 from synscale.config.profiles import get_profile
 from synscale.training.data import write_document_file
 
-TOKENIZER_REPO = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # ungated Llama-2 32k SentencePiece
+def train_tokenizer(data_dir: Path, sample_texts, vocab_size: int = 16384):
+    """Train a 16k byte-level BPE ONCE on the shared real corpus (user lock item 4).
+
+    A 16k vocab keeps embeddings from dominating the 25M student, so the student-size axis is
+    not distorted by tokenizer overhead. Special tokens <s>/</s> are ids 0/1. Saved to
+    data/tokenizer/tokenizer.json; the same tokenizer is used for every student size and to
+    retokenise every teacher's output (teachers generate with their own tokenizer)."""
+    from tokenizers import Tokenizer
+    from tokenizers.models import BPE
+    from tokenizers.trainers import BpeTrainer
+    from tokenizers.pre_tokenizers import ByteLevel
+    from tokenizers.decoders import ByteLevel as ByteLevelDecoder
+    tok_dir = data_dir / "tokenizer"; tok_dir.mkdir(parents=True, exist_ok=True)
+    tok_json = tok_dir / "tokenizer.json"
+    if tok_json.exists():
+        return Tokenizer.from_file(str(tok_json))
+    tok = Tokenizer(BPE(unk_token=None))
+    tok.pre_tokenizer = ByteLevel(add_prefix_space=True)
+    tok.decoder = ByteLevelDecoder()
+    trainer = BpeTrainer(vocab_size=vocab_size, special_tokens=["<s>", "</s>"],
+                         initial_alphabet=ByteLevel.alphabet(), min_frequency=2)
+    tok.train_from_iterator(sample_texts, trainer=trainer)
+    tok.save(str(tok_json))
+    print(f"[prepare] trained 16k BPE ({tok.get_vocab_size()} tokens) -> {tok_json}")
+    return tok
 
 
 def get_tokenizer(data_dir: Path):
     from tokenizers import Tokenizer
-    tok_dir = data_dir / "tokenizer"
-    tok_dir.mkdir(parents=True, exist_ok=True)
-    tok_json = tok_dir / "tokenizer.json"
+    tok_json = data_dir / "tokenizer" / "tokenizer.json"
     if not tok_json.exists():
-        from transformers import AutoTokenizer
-        hf = AutoTokenizer.from_pretrained(TOKENIZER_REPO)
-        hf.backend_tokenizer.save(str(tok_json))
-        print(f"[prepare] saved tokenizer -> {tok_json}")
+        raise FileNotFoundError("tokenizer not trained yet; prepare() trains it from the base corpus sample")
     return Tokenizer.from_file(str(tok_json))
 
 
@@ -66,8 +85,12 @@ def _stream_docstream(texts, tok, bos, eos, stem: Path, max_tokens: int, log_eve
 def prepare(profile_name: str, data_dir: Path, base_train_tokens: int, heldout_tokens: int):
     from datasets import load_dataset
     p = get_profile(profile_name)
-    tok = _Tok(get_tokenizer(data_dir))
-    bos, eos = 1, 2
+    # train the 16k BPE on a sample of the base corpus first (user lock item 4)
+    sample = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True)
+    sample_texts = (r["text"] for i, r in enumerate(sample) if i < 200_000)
+    raw_tok = train_tokenizer(data_dir, sample_texts, vocab_size=16384)
+    tok = _Tok(raw_tok)
+    bos = raw_tok.token_to_id("<s>"); eos = raw_tok.token_to_id("</s>")
     proc = data_dir / "processed" / profile_name
     need = max(p.base_tokens.values())
     base_train_tokens = max(base_train_tokens, need + p.d2_tokens)  # +replay headroom

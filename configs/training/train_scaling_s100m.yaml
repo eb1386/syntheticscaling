@@ -1,7 +1,7 @@
-# Scaling-study training config: base = 20 tokens/param (Chinchilla), fine eval cadence
-# (~20M tokens) so the synthetic-phase loss-vs-tokens curve is dense for the data-scaling fit.
+# Scaling-study config: base=20 tok/param (Chinchilla); fine eval cadence (~20M tok) for a dense loss-vs-D curve (docs/22).
+# N_tot=100,685,568 N_ne=88,102,656 base=2.0B lr=0.001208
 name: train_scaling_s100m
-tokenizer: llama2-sp-32k
+tokenizer: bpe16k-v1
 tokenizer_sha256: PENDING
 context_length: 2048
 precision: bf16_mixed
@@ -13,7 +13,7 @@ seed_phase: 1
 base_phase:
   tokens: 2000000000
   batch_tokens: 524288
-  lr_peak: 0.001285
+  lr_peak: 0.001208
   lr_min_ratio: 1.0
   schedule: wsd
   warmup_tokens: 100000000
@@ -28,13 +28,13 @@ base_phase:
   packing: packed_masked
   replay_fraction: 0.0
 synthetic_phase:
-  tokens: 400000000
+  tokens: 530000000
   batch_tokens: 524288
-  lr_peak: 0.001285
+  lr_peak: 0.001208
   lr_min_ratio: 0.0
   schedule: wsd
   warmup_tokens: 0
-  decay_tokens: 400000000
+  decay_tokens: 530000000
   weight_decay: 0.1
   betas:
   - 0.9

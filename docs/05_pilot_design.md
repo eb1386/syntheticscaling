@@ -1,5 +1,10 @@
 # 05. Pilot Design and Go/No-Go Rules
 
+> **The `scaling5080_fast` profile IS the pilot** (user lock item 5): a ~1-week, 3-student x
+> 4-teacher, 2-seed run whose purpose is to measure throughput, seed variance, OOM behaviour,
+> filter yield, loss-curve smoothness and effect sizes on the real 5080. Only after it passes
+> the go/no-go rules below do we launch the full 4-student `scaling5080` grid for the paper.
+
 The pilot validates the pipeline and estimates the noise before committing weeks of GPU time.
 On one 5080 the pilot is the first slice of the `local5080` run (it reuses the same code and
 configs), plus the `smoke` check.

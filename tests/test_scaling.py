@@ -43,8 +43,12 @@ def test_teacher_dependence_end_to_end(tmp_path):
     # alpha should increase with teacher size within a student
     a = fits[("s025m", "t0p5b")]["alpha"]; b = fits[("s025m", "t7b")]["alpha"]
     assert b > a
+    # per-cell fits report the estimated asymptote (not "irreducible loss") and a best form
+    assert "L_inf_hat" in fits[("s025m", "t7b")] and "best_form" in fits[("s025m", "t7b")]
+    # single-seed cells are flagged (no across-seed CI)
+    assert fits[("s025m", "t7b")]["seed_ci"] is False
     # teacher-dependence test reports a positive alpha slope on log T
     td = rep["teacher_dependence"]["per_student"]["s025m"]["alpha"]
     assert td["slope_per_log2T"] > 0
-    # synthetic-vs-real gap present
-    assert any(r["student"] == "s025m" for r in rep["synthetic_vs_real"])
+    # synthetic-data multiplier present for at least one teacher at s025m
+    assert any(r["student"] == "s025m" for r in rep["synthetic_data_multiplier"])

@@ -15,7 +15,9 @@ form (Hoffmann et al. 2022; Kaplan et al. 2020):
 L(D) = E + A · D^(-alpha)
 ```
 
-- **E** — irreducible loss: where the curve asymptotes, i.e. the best this data can do.
+- **E** — estimated asymptote `L_inf_hat` over the *observed* D range. NOT the true irreducible
+  loss: with a limited D range E, A and alpha trade off, so E is reported as an estimate and the
+  form is chosen by held-out fit (see 22.3a).
 - **A** — coefficient: the offset / difficulty of the source.
 - **alpha** — data-scaling exponent: how fast loss falls as you add tokens. Bigger alpha = data that keeps paying off.
 
@@ -28,6 +30,30 @@ to `results/<id>/train_log.jsonl` (`held_out_nll` per eval set, with `tokens`). 
 run yields ~20 points on the `L(D)` curve. We do **not** run a separate D-sweep: one run per
 `(S, T, seed)` gives the whole curve. This is what lets a broad grid fit on one 5080.
 
+## 22.3a Statistical safeguards (locked)
+
+1. **Checkpoints are not independent.** The ~20 points on one curve come from one optimisation
+   trajectory and are autocorrelated. We fit a curve **separately per seed** (one run = one
+   observation of the parameters) and take uncertainty from the **spread across seeds**. Cells
+   with a single seed are flagged `seed_ci=false`; inference needs >=2 seeds (>=3 in the full run).
+2. **E is an estimated asymptote, not irreducible loss.** We fit three forms — `E+A*D^-alpha`,
+   `a-b*log D`, and pure `A*D^-alpha` — and compare them on **held-out checkpoints** (the last
+   third of each curve). The reported `best_form` is the one that predicts held-out points best;
+   `L_inf_hat` is labelled as an estimate over the observed regime.
+3. **Teacher-independent evaluation.** Loss is measured on fixed, teacher-independent sets:
+   held-out real web text (`base_heldout`), held-out human instruction/answer text (`instr`),
+   and downstream benchmark accuracy (secondary). We never evaluate on a teacher's own synthetic
+   distribution, which would reward imitation.
+
+## 22.3b Synthetic-data multiplier (preferred metric)
+
+For each (student, teacher) we invert the fitted curve for the teacher and for the matched-real
+control (C1) and report `D_real(L) / D_syn(L)` at matched loss: how many real tokens one
+synthetic token is worth over that loss range (median, min, max). A value of 1.6 means "one
+7B-teacher token ~ 1.6 real tokens for this student here". Combined with generation cost it
+answers whether the extra value was economically worthwhile — more interpretable than a bespoke
+efficiency metric.
+
 ## 22.3 The three tests (the research question, operationalised)
 
 "Do synthetic-data scaling laws depend on the teacher?" becomes three concrete tests
@@ -36,7 +62,7 @@ run yields ~20 points on the `L(D)` curve. We do **not** run a separate D-sweep:
 1. **Does the exponent depend on teacher size?** Within each student, regress `alpha` on
    `log2 T`. A positive slope means larger teachers produce data that *scales better* (loss
    keeps falling with more tokens); a flat slope means teacher size sets a level, not a rate.
-2. **Does the irreducible loss depend on teacher size?** Regress `E` on `log2 T`. A negative
+2. **Does the estimated asymptote depend on teacher size?** Regress `L_inf_hat` on `log2 T`. A negative
    slope means larger teachers reach a lower asymptotic loss (more headroom), regardless of rate.
 3. **Does synthetic data scale like real data?** Compare each teacher's `(E, alpha)` to the
    matched-real control `C1` at the same student. The gap `E_syn - E_real` and the exponents

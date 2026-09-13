@@ -6,10 +6,13 @@ more synthetic tokens — and **does that scaling law depend on how big the teac
 
 This repository runs that experiment end to end on a **single RTX 5080 (16 GB)**. It trains
 a family of small students (25M–250M) on synthetic data from four teachers (0.5B–7B), and
-fits the data-scaling law `L(D) = E + A·D^(−α)` for every student × teacher cell, where `D`
-is the number of synthetic tokens. It then tests whether the exponent `α`, the coefficient
-`A`, and the irreducible loss `E` change with teacher size, and whether synthetic data scales
-like an equal amount of real web text.
+fits data-scaling curves for every student × teacher cell (primary form `L(D) = E + A·D^(−α)`,
+where `D` is the number of synthetic tokens and `E` is the estimated asymptote over the observed
+range, *not* the true irreducible loss). It then tests whether the exponent `α`, the coefficient
+`A`, and the asymptote `E` change with teacher size, and reports a **synthetic-data multiplier**:
+how many real tokens one synthetic token is worth. Three functional forms are fit and compared
+on held-out checkpoints, and uncertainty comes from independent seeds, not from checkpoints on
+one trajectory.
 
 Everything is measured in **loss** (not accuracy), which is the right, floor-free quantity
 for scaling laws and is what makes this feasible at 25M–250M parameters.
@@ -42,8 +45,10 @@ Run inside `tmux`/`screen` so it survives disconnects.
 | `smoke` | real models, tiny budget | ~1–3 hours |
 | `micro` | CPU validation, toy model | minutes |
 
-Start with `scaling5080_fast` for a complete first result in a week; run `scaling5080` for the
-full-depth version. The data-quantity axis `D` is read from each run's training curve, so you
+**Run `scaling5080_fast` first as the pilot** (~1 week): it measures real throughput, variance,
+OOM behaviour, filter yield and effect sizes on this exact hardware. If the pilot is clean, run
+the full `scaling5080` grid for the paper. Three student sizes are enough to debug the
+relationship; the fourth makes the student × teacher interaction far more convincing. The data-quantity axis `D` is read from each run's training curve, so you
 get ~20 points on the scaling curve per cell for free — no extra runs. See
 [`docs/RUN_ON_5080.md`](docs/RUN_ON_5080.md) for the scoping, knobs, and what needs a bigger card.
 
@@ -89,7 +94,15 @@ tests/               60 unit tests (CPU; torch/vllm tests skip if unavailable)
 
 Install: `pip install -e ".[train,gen,eval,analysis,dev]"`. Tests: `make test`.
 
-## Status and honesty
+## Ambition and honesty
+
+This is built to a **NeurIPS-quality methodological standard** (pre-registered tests, matched
+checkpoints, teacher-independent evaluation, seed-level uncertainty). Whether a result belongs
+at a main conference depends on what it shows and its novelty against prior work — a clean
+*negative* (all teachers ≥1.5B give statistically indistinguishable scaling curves) can be as
+useful as a positive, but only with strong controls. The repo does not claim the result in advance.
+
+## Status
 
 The whole pipeline runs end to end (verified on CPU with `make micro`; 60 tests pass). It has
 **not** yet been run on a GPU here — the throughput/time numbers are formula estimates marked

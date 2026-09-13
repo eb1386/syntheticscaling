@@ -1,42 +1,45 @@
-# TrainingConfig s050m (N_ne=31.86M). Base = 20 tokens/param (Chinchilla) = 1B tokens.
-# lr_peak = 2e-3 * (N_ne/25e6)^-0.4 = 1.8e-3. Fine eval cadence (~20M tokens) so the
-# synthetic-phase loss-vs-tokens curve has ~20 points for the data-scaling fit (docs/22).
+# Accuracy-framing config (local5080). 16k BPE student family.
+# N_tot=51,918,912 N_ne=42,481,728 base=1.0B lr=0.001618
 name: train_s050m
-tokenizer: llama2-sp-32k
+tokenizer: bpe16k-v1
 tokenizer_sha256: PENDING
 context_length: 2048
 precision: bf16_mixed
 optimizer: adamw
 checkpoint_rule: final
-eval_every_tokens: 20000000
+eval_every_tokens: 40000000
 seed_base: 1
 seed_phase: 1
 base_phase:
   tokens: 1000000000
   batch_tokens: 262144
-  lr_peak: 1.8e-3
+  lr_peak: 0.001618
   lr_min_ratio: 1.0
   schedule: wsd
   warmup_tokens: 50000000
   decay_tokens: 0
   weight_decay: 0.1
-  betas: [0.9, 0.95]
-  eps: 1.0e-8
+  betas:
+  - 0.9
+  - 0.95
+  eps: 1.0e-08
   grad_clip: 1.0
   loss_mask: all_tokens
   packing: packed_masked
   replay_fraction: 0.0
 synthetic_phase:
-  tokens: 400000000
+  tokens: 800000000
   batch_tokens: 262144
-  lr_peak: 1.8e-3
+  lr_peak: 0.001618
   lr_min_ratio: 0.0
   schedule: wsd
   warmup_tokens: 0
-  decay_tokens: 400000000
+  decay_tokens: 800000000
   weight_decay: 0.1
-  betas: [0.9, 0.95]
-  eps: 1.0e-8
+  betas:
+  - 0.9
+  - 0.95
+  eps: 1.0e-08
   grad_clip: 1.0
   loss_mask: all_tokens
   packing: packed_masked

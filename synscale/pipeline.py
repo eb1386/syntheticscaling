@@ -52,21 +52,21 @@ def get_tokenizer(profile: Profile, data_dir: Path):
     if not tok_path.exists():
         raise FileNotFoundError(f"tokenizer not found at {tok_path}; run prepare_data first")
 
-    class _HF:
-        name = "llama2-sp-32k"
+    class _BPE:
+        name = "bpe16k-v1"
         def __init__(self, p):
             from tokenizers import Tokenizer
-            self._t = Tokenizer.from_file(str(p))
             import hashlib
+            self._t = Tokenizer.from_file(str(p))
             self.sha256 = hashlib.sha256(Path(p).read_bytes()).hexdigest()
+            self.bos = self._t.token_to_id("<s>"); self.eos = self._t.token_to_id("</s>")
         def encode(self, text: str):
-            return self._t.encode(text, add_special_tokens=False).ids
+            return self._t.encode(text).ids
         def count(self, text: str):
             return len(self.encode(text))
 
-    hf = _HF(tok_path)
-    # BOS/EOS: Llama-2 SP ids 1/2.
-    return hf, hf, 1, 2
+    bpe = _BPE(tok_path)
+    return bpe, bpe, bpe.bos, bpe.eos
 
 
 # --------------------------------------------------------------------------------------
