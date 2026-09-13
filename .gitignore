@@ -14,3 +14,13 @@ results/**/*.safetensors
 results/**/*.bin
 wandb/
 .env
+
+# Generated run outputs (produced by run_all.sh / make micro; not source)
+results/*/
+!results/.gitkeep
+data/prompts/pool-*.jsonl
+data/prompts/pool-*.jsonl.sha256
+data/prompts/pool-*.manifest.json
+data/tokenizer/
+configs/experiments/*/
+checkpoints/

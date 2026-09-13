@@ -1,5 +1,0 @@
-experiment_id,cond,arm,student,s_params_nominal,seed_phase,teacher,teacher_params,t_params_nominal,sciq_acc,arc_easy_acc_norm,piqa_acc_norm,lambada_openai_acc,openbookqa_acc_norm,social_iqa_acc,hellaswag_acc_norm
-main.s_micro.base.d0.-.s1-6f5ffde9,C0,base_only,s_micro,200000,1,,,,0.4,0.4,0.4,0.7,0.3,0.35,0.1
-main.s_micro.real.d80000.eqtok.s1-49e057b6,C1,matched_real,s_micro,200000,1,,,,0.15,0.15,0.4,0.7,0.15,0.25,0.4
-main.s_micro.t0p5b.d80000.eqtok.s1-6b0a9118,t0p5b,synthetic,s_micro,200000,1,t0p5b,500000000,500000000,0.2,0.15,0.4,0.3,0.35,0.45,0.35
-main.s_micro.t3b.d80000.eqtok.s1-893783b4,t3b,synthetic,s_micro,200000,1,t3b,3000000000,3000000000,0.2,0.15,0.4,0.3,0.35,0.45,0.35
