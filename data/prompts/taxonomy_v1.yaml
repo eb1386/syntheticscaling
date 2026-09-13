@@ -1,0 +1,297 @@
+version: taxonomy-v1
+science_domains:
+- physical_sciences
+- life_sciences
+- mathematics
+- computer_science
+- engineering_technology
+domains:
+  physical_sciences:
+    physics:
+    - Newton's laws of motion
+    - conservation of energy
+    - thermodynamics and heat
+    - electricity and circuits
+    - magnetism
+    - waves and sound
+    - optics and light
+    - gravity and orbits
+    - momentum and collisions
+    - states of matter
+    - nuclear physics basics
+    - simple machines
+    chemistry:
+    - atomic structure
+    - the periodic table
+    - chemical bonding
+    - acids and bases
+    - chemical reactions
+    - the mole and stoichiometry
+    - gases and gas laws
+    - solutions and solubility
+    - oxidation and reduction
+    - organic molecules basics
+    - electrochemistry
+    - reaction rates
+    astronomy:
+    - the solar system
+    - stars and their life cycles
+    - galaxies
+    - the moon and tides
+    - eclipses
+    - planets and dwarf planets
+    - comets and asteroids
+    - the expanding universe
+    - telescopes
+    - seasons and Earth's tilt
+    earth_science:
+    - plate tectonics
+    - the rock cycle
+    - weather and climate
+    - the water cycle
+    - volcanoes and earthquakes
+    - erosion and weathering
+    - the atmosphere
+    - oceans and currents
+    - minerals
+    - fossils and geologic time
+  life_sciences:
+    biology:
+    - cell structure and function
+    - photosynthesis
+    - cellular respiration
+    - DNA and genes
+    - mitosis and meiosis
+    - evolution by natural selection
+    - ecosystems and food webs
+    - the human digestive system
+    - the circulatory system
+    - the nervous system
+    - enzymes
+    - viruses and bacteria
+    ecology:
+    - biodiversity
+    - the carbon cycle
+    - the nitrogen cycle
+    - predator-prey relationships
+    - symbiosis
+    - population dynamics
+    - conservation biology
+    - biomes
+    - invasive species
+    genetics:
+    - Mendelian inheritance
+    - dominant and recessive traits
+    - Punnett squares
+    - mutations
+    - genetic variation
+    - heredity
+    - chromosomes
+    human_health:
+    - nutrition basics
+    - the immune system
+    - vaccination
+    - exercise physiology
+    - sleep and health
+    - common infectious diseases
+    - the respiratory system
+  mathematics:
+    arithmetic:
+    - fractions
+    - decimals
+    - percentages
+    - ratios and proportions
+    - order of operations
+    - negative numbers
+    - rounding and estimation
+    algebra:
+    - solving linear equations
+    - systems of equations
+    - quadratic equations
+    - exponents and powers
+    - polynomials
+    - inequalities
+    - functions and graphs
+    geometry:
+    - area and perimeter
+    - volume and surface area
+    - the Pythagorean theorem
+    - angles and triangles
+    - circles
+    - coordinate geometry
+    - similar and congruent shapes
+    probability_statistics:
+    - mean median and mode
+    - basic probability
+    - reading data tables
+    - interpreting graphs
+    - combinations and permutations
+    - standard deviation basics
+  computer_science:
+    programming:
+    - variables and data types
+    - loops and iteration
+    - functions
+    - conditionals
+    - arrays and lists
+    - recursion basics
+    - debugging strategies
+    algorithms:
+    - sorting algorithms
+    - searching algorithms
+    - big-O notation basics
+    - hash tables
+    - stacks and queues
+    - binary trees
+    systems:
+    - how the internet works
+    - how computers store data
+    - operating systems basics
+    - databases
+    - encryption basics
+    - version control
+  history:
+    world_history:
+    - ancient Egypt
+    - the Roman Empire
+    - the Renaissance
+    - the Industrial Revolution
+    - the two World Wars
+    - the Cold War
+    - ancient Greece
+    - the Silk Road
+    - decolonization
+    us_history:
+    - the American Revolution
+    - the Constitution
+    - the Civil War
+    - the civil rights movement
+    - westward expansion
+    - the Great Depression
+    history_of_science:
+    - the scientific revolution
+    - Darwin and evolution
+    - the discovery of DNA
+    - the space race
+    - the history of computing
+  geography:
+    physical_geography:
+    - continents and oceans
+    - mountain ranges
+    - rivers and lakes
+    - deserts
+    - climate zones
+    - natural resources
+    human_geography:
+    - world capitals
+    - population and migration
+    - urbanization
+    - maps and coordinates
+    - cultural regions
+    - economic geography
+  language_arts:
+    grammar:
+    - parts of speech
+    - sentence structure
+    - punctuation
+    - subject-verb agreement
+    - active and passive voice
+    - common usage errors
+    writing:
+    - writing a thesis statement
+    - paragraph structure
+    - summarizing a text
+    - persuasive writing
+    - descriptive writing
+    - citing sources
+    literature:
+    - theme and motif
+    - character and plot
+    - figurative language
+    - poetic devices
+    - narrative point of view
+    vocabulary:
+    - prefixes and suffixes
+    - root words
+    - synonyms and antonyms
+    - context clues
+    - commonly confused words
+  economics:
+    microeconomics:
+    - supply and demand
+    - opportunity cost
+    - markets and prices
+    - competition
+    - incentives
+    macroeconomics:
+    - inflation
+    - unemployment
+    - gross domestic product
+    - interest rates
+    - international trade
+    personal_finance:
+    - budgeting
+    - saving and interest
+    - credit and debt
+    - taxes basics
+    - investing basics
+  social_science:
+    psychology:
+    - memory and learning
+    - classical conditioning
+    - cognitive biases
+    - stages of development
+    - motivation
+    civics:
+    - how laws are made
+    - branches of government
+    - voting and elections
+    - rights and responsibilities
+    sociology:
+    - culture and norms
+    - socialization
+    - group behavior
+    - social institutions
+  arts:
+    music:
+    - reading music notation
+    - rhythm and tempo
+    - musical instruments families
+    - major and minor scales
+    - the history of jazz
+    visual_arts:
+    - color theory
+    - perspective drawing
+    - art movements
+    - elements of composition
+  everyday_reasoning:
+    practical_tasks:
+    - planning a trip within a budget
+    - following a recipe and scaling it
+    - comparing prices per unit
+    - reading a bus schedule
+    - assembling furniture steps
+    - first aid basics
+    physical_commonsense:
+    - which container holds more
+    - what floats or sinks
+    - how to keep food cold
+    - safe handling of hot objects
+    - how tools are used
+    social_commonsense:
+    - polite ways to decline
+    - resolving a disagreement
+    - interpreting someone's intent
+    - appropriate behavior in context
+  engineering_technology:
+    engineering:
+    - how bridges bear load
+    - electrical safety
+    - how engines work
+    - renewable energy sources
+    - how batteries store energy
+    everyday_technology:
+    - how Wi-Fi works
+    - how GPS works
+    - how touchscreens work
+    - how a refrigerator works
