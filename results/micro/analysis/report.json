@@ -1,0 +1,15 @@
+{
+  "n_rows": 4,
+  "notes": [
+    "tstar skipped: list index out of range"
+  ],
+  "retained_tasks": [
+    "sciq",
+    "arc_easy",
+    "piqa",
+    "lambada_openai"
+  ],
+  "gate_status": "ok",
+  "smallest_student": "s_micro",
+  "cell_table": "results/micro/analysis/cell_table.csv"
+}

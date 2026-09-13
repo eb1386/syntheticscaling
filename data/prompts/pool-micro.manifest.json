@@ -1,0 +1,165 @@
+{
+  "counts_by_category": {
+    "CS": 143,
+    "EXP": 40,
+    "IF": 181,
+    "MSR": 225,
+    "SAQA": 213,
+    "SCI": 167,
+    "STR": 91
+  },
+  "counts_by_category_source": {
+    "CS": {
+      "templated": 143
+    },
+    "EXP": {
+      "templated": 40
+    },
+    "IF": {
+      "templated": 181
+    },
+    "MSR": {
+      "templated": 225
+    },
+    "SAQA": {
+      "templated": 213
+    },
+    "SCI": {
+      "templated": 167
+    },
+    "STR": {
+      "templated": 91
+    }
+  },
+  "counts_by_source": {
+    "templated": 1060
+  },
+  "counts_by_source_detail": {
+    "templated": 1060
+  },
+  "decontam_ngram_n": null,
+  "decontaminated": false,
+  "diversity": {
+    "audience_marginals": {
+      "college students": 42,
+      "general adult readers": 20,
+      "high-school students": 70,
+      "middle-school students": 44,
+      "professionals": 12,
+      "young children": 19
+    },
+    "distinct_4": 0.46195069667738475,
+    "leaf_cap": 3,
+    "max_leaf_count": 3,
+    "msr_templates": {
+      "ages_future_sum": 27,
+      "average_score": 16,
+      "discount_total": 35,
+      "ratio_split": 28,
+      "sharing_leftover": 33,
+      "shopping_total": 23,
+      "trip_distance": 35,
+      "unit_conversion": 12,
+      "weekday_after": 16
+    },
+    "n_personas": 0,
+    "n_seed_docs": 0,
+    "n_verifiable": 607,
+    "near_dup_rate_candidates": 0.17675,
+    "taxonomy_entropy": {
+      "bits": 7.892640221181045,
+      "n_leaves_used": 240,
+      "normalised": 0.9981977271273504
+    }
+  },
+  "drops": {
+    "exact_dup": 785,
+    "leaf_cap": 1444,
+    "near_dup": 707
+  },
+  "generators": {
+    "templated": "TemplatedPromptGenerator"
+  },
+  "leaf_cap_fraction": 0.002,
+  "minhash": {
+    "approx_jaccard_threshold": 0.719,
+    "n_bands": 14,
+    "n_gram": 5,
+    "rows_per_band": 8,
+    "seed": 0
+  },
+  "msr_template_ids": [
+    "ages_future_sum",
+    "average_score",
+    "discount_total",
+    "ratio_split",
+    "sharing_leftover",
+    "shopping_total",
+    "trip_distance",
+    "unit_conversion",
+    "weekday_after"
+  ],
+  "msr_template_version": "msr-templates-v1.0",
+  "n_candidates_seen": 4000,
+  "n_prompts": 1060,
+  "n_prompts_target": 1500,
+  "pool_file": "pool-micro.jsonl",
+  "pool_sha256": "acafaa2295634d8c7ad8cfd824ea9837965000790f202bb8c393ba39b334ded3",
+  "pool_version": "pool-micro-v1.0-acafaa229563",
+  "quotas": {
+    "CS": 225,
+    "EXP": 180,
+    "IF": 225,
+    "MSR": 225,
+    "SAQA": 225,
+    "SCI": 300,
+    "STR": 120
+  },
+  "requested": {
+    "CS": {
+      "templated": 731
+    },
+    "EXP": {
+      "templated": 856
+    },
+    "IF": {
+      "templated": 522
+    },
+    "MSR": {
+      "templated": 259
+    },
+    "SAQA": {
+      "templated": 339
+    },
+    "SCI": {
+      "templated": 948
+    },
+    "STR": {
+      "templated": 345
+    }
+  },
+  "schema_version": "pool-schema-v1",
+  "seed": 0,
+  "shares_realised": {
+    "CS": 0.1349056603773585,
+    "EXP": 0.03773584905660377,
+    "IF": 0.17075471698113207,
+    "MSR": 0.21226415094339623,
+    "SAQA": 0.2009433962264151,
+    "SCI": 0.15754716981132075,
+    "STR": 0.08584905660377358
+  },
+  "shortfall_reallocated": {},
+  "taxonomy_sha256": "201b7dc49f39ae93737faad7738a746b572629f38c61b802ebfaf0e068992639",
+  "taxonomy_version": "taxonomy-v1",
+  "templates": {
+    "background_template_sha256": "3c43feec547bdd25e917ab9c2ff40a543210b62cfbbb136c38abcbcd637aff6d",
+    "render_template_sha256": "85f1cbcf7d7d062307ededef27bfa37d9e2e921f65cf4f57376866a1ec04f62a",
+    "render_version": "render-v1.0",
+    "suffix_set_sha256": "94595e8de4e1f0403ee0422b0eb7e3dbc32e271d53e3954b08aebe6d71978b2c",
+    "suffix_set_version": "suffix-v1.0",
+    "system_prompt_id": "sys_v1",
+    "system_prompt_sha256": "98f6da31bbf6a2b34422ecd1794ae9ad1b0047bc83f0776a817aec972592debf"
+  },
+  "version": "micro-v1.0"
+}

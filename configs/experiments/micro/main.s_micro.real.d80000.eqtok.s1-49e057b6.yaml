@@ -1,0 +1,15 @@
+study: main
+arm: matched_real
+variant: eqtok
+student: configs/students/s_micro.yaml
+training: configs/training/train_s_micro.yaml
+evaluation: configs/evaluation/primary_v1.yaml
+dataset_ref: data/processed/micro/treat/real.fineweb-edu-heldout.d60000.s1
+overrides:
+  training.seed_base: 1
+  training.seed_phase: 1
+  training.synthetic_phase.tokens: 80000
+  training.synthetic_phase.decay_tokens: 80000
+  training.synthetic_phase.replay_fraction: 0.25
+  training.base_phase.tokens: 200000
+notes: profile=micro; arm=matched_real; teacher=-; d_syn=60000

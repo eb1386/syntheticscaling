@@ -1,0 +1,56 @@
+{
+  "tasks": {
+    "sciq": {
+      "acc": 0.4,
+      "acc_norm": 0.4,
+      "n": 20
+    },
+    "arc_easy": {
+      "acc": 0.4,
+      "acc_norm": 0.4,
+      "n": 20
+    },
+    "piqa": {
+      "acc": 0.4,
+      "acc_norm": 0.4,
+      "n": 20
+    },
+    "lambada_openai": {
+      "acc": 0.7,
+      "acc_norm": 0.7,
+      "n": 20
+    },
+    "openbookqa": {
+      "acc": 0.3,
+      "acc_norm": 0.3,
+      "n": 20
+    },
+    "social_iqa": {
+      "acc": 0.35,
+      "acc_norm": 0.35,
+      "n": 20
+    },
+    "hellaswag": {
+      "acc": 0.1,
+      "acc_norm": 0.1,
+      "n": 20
+    }
+  },
+  "reported": {
+    "sciq": 0.4,
+    "arc_easy": 0.4,
+    "piqa": 0.4,
+    "lambada_openai": 0.7,
+    "openbookqa": 0.3,
+    "social_iqa": 0.35,
+    "hellaswag": 0.1
+  },
+  "experiment_id": "main.s_micro.base.d0.-.s1-6f5ffde9",
+  "cond": "C0",
+  "student": "s_micro",
+  "s_params_nominal": 200000,
+  "arm": "base_only",
+  "seed_phase": 1,
+  "teacher": null,
+  "teacher_params": null
+}
