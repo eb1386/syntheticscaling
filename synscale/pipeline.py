@@ -252,12 +252,13 @@ def build_pool_stage(profile: Profile, data_dir: Path) -> str:
 
 
 def generate_stage(profile: Profile, teacher: TeacherSpec, pool_path: str, counter, data_dir: Path, *,
-                   backend_kind: str, device: str, sampling) -> dict:
+                   backend_kind: str, device: str, sampling, shard_index: int = 0, shard_count: int = 1) -> dict:
     from synscale.generation.backend import build_backend
     from synscale.generation.runner import run_generation
     out_dir = data_dir / "processed" / profile.name / "gen" / teacher.name
-    if (out_dir / "manifest.json").exists():
-        return json.loads((out_dir / "manifest.json").read_text())
+    mname = f"manifest-w{shard_index}.json" if shard_count > 1 else "manifest.json"
+    if (out_dir / mname).exists():
+        return json.loads((out_dir / mname).read_text())
     if backend_kind == "mock":
         # skill scales with log teacher size so the mock has a monotone-ish size signal
         skill = 0.4 + 0.5 * (teacher.nominal_params ** 0.15) / (1e9 ** 0.15)
@@ -270,7 +271,8 @@ def generate_stage(profile: Profile, teacher: TeacherSpec, pool_path: str, count
     return run_generation(pool_path, backend, sampling, counter, out_dir, teacher_id=teacher.name,
                           pool_version=pool_version, target_student_tokens=profile.d_syn,
                           overgeneration_factor=1.25, shard_size=(200 if profile.name in ("micro","smoke") else 5000),
-                          system_prompt=None, manifest_extra={"backend_kind": backend_kind})
+                          system_prompt=None, manifest_extra={"backend_kind": backend_kind},
+                          shard_index=shard_index, shard_count=shard_count)
 
 
 def _load_model_from_ckpt(ckpt_path: Path, student_cfg):
@@ -438,6 +440,44 @@ def _student_cfg(student: str):
 # ======================================================================================
 # Top-level orchestration
 # ======================================================================================
+def build_context(profile: Profile, *, data_dir=None, results_dir=None, store_dir=None,
+                  backend_kind="auto", device="auto", eval_limit=None) -> dict:
+    """Idempotent shared setup used by both run_profile and the fleet worker: resolves device,
+    tokenizer, corpora, pool, decoding, tasks. Safe to call once per job (cheap; prepare/pool
+    return existing artifacts). Assumes prepare/pool have run (guaranteed by job deps in fleet)."""
+    data_dir = Path(data_dir or profile.persistent_dir or "data")
+    results_dir = Path(results_dir or f"results/{profile.name}")
+    store_dir = Path(store_dir or os.environ.get("SYNSCALE_STORE", f"checkpoints/{profile.name}"))
+    for p_ in (results_dir, store_dir):
+        p_.mkdir(parents=True, exist_ok=True)
+    is_toy = profile.name in ("micro", "smoke")
+    if device == "auto":
+        try:
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            device = "cpu"
+    if backend_kind == "auto":
+        backend_kind = "mock" if profile.name == "micro" else "vllm"
+    micro_batch_seqs = 8 if is_toy else 16
+    import yaml as _yaml
+    from synscale.generation.backend import SamplingSpec
+    gc = _yaml.safe_load((REPO_ROOT / _GEN_FRAG).read_text())
+    sampling = SamplingSpec(temperature=gc["temperature"], top_p=gc["top_p"], top_k=gc.get("top_k", -1),
+                            repetition_penalty=gc.get("repetition_penalty", 1.0),
+                            max_new_tokens=(256 if is_toy else gc["max_new_tokens"]),
+                            n=gc.get("samples_per_prompt", 1), seed=gc.get("sampling_seed", 0),
+                            stop_token_ids=tuple(gc.get("stop_token_ids", [])))
+    tokenizer, counter, bos_id, eos_id = get_tokenizer(profile, data_dir)
+    corpora = prepare_data(profile, data_dir, tokenizer, bos_id, eos_id, synthetic=is_toy)
+    pool_path = build_pool_stage(profile, data_dir)
+    return dict(data_dir=data_dir, results_dir=results_dir, store_dir=store_dir, is_toy=is_toy,
+                device=device, backend_kind=backend_kind, micro_batch_seqs=micro_batch_seqs,
+                tokenizer=tokenizer, counter=counter, bos_id=bos_id, eos_id=eos_id, sampling=sampling,
+                pool_path=pool_path, corpora=corpora, exp_dir=REPO_ROOT / "configs" / "experiments" / profile.name,
+                tasks=_primary_tasks(), peak=_peak_tflops(device), eval_limit=eval_limit)
+
+
 def run_profile(profile_name: str, *, data_dir: Optional[Path] = None, results_dir: Optional[Path] = None,
                 store_dir: Optional[Path] = None, backend_kind: str = "auto", device: str = "auto",
                 micro_batch_seqs: Optional[int] = None, max_steps: Optional[int] = None,

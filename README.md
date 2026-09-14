@@ -73,44 +73,58 @@ capacity-dependent theory predicts.
 | Data `D` | about 20 points from 25M to 400M, from the training curve |
 | Controls | C1 equal real tokens, C1b human Q&A, C0 base |
 
-Teachers are served at uniform FP8 precision, quantized on load, with 70B and 72B running across
-two GPUs. The partial second family breaks the size-versus-family confound at two student sizes
-without doubling the whole grid, which is what keeps C4 affordable. Total: 188 training runs.
+Every teacher, up to and including 70B and 72B, is served single-card at int4 (AWQ), so no teacher
+needs a two-GPU tensor-parallel pod. That one decision makes every generation job fit on a single
+spot instance and be safe to preempt, which is what the fleet below exploits. The partial second
+family breaks the size-versus-family confound at two student sizes without doubling the whole grid,
+which is what keeps C4 affordable. Total: about 198 training runs.
 
-## Running it on RunPod
+## Running it on a spot fleet of H100s
 
-The study is targeted at rented H100s. Two commands. The first installs dependencies, trains the
+The study is targeted at rented H100s and is built to run on a fleet of cheap, preemptible spot
+pods rather than one reliable machine. Two commands. The first installs dependencies, trains the
 tokenizer, downloads and tokenizes the corpora, fetches the teacher models, and builds the
-prompt pool onto a persistent volume. The second runs the whole study and is resumable, so a
-reclaimed spot instance costs almost nothing.
+prompt pool onto a persistent volume. The second builds a job queue on that volume and drains it.
 
 ```bash
 ./install.sh c4
-./run_all.sh c4
+./run_all.sh c4 --fleet        # queue + one local worker; add more pods with scripts/worker.sh
 ```
 
+The fleet is the ultra-optimized path. A file-locked job queue lives on the shared persistent
+volume; any number of `scripts/worker.sh` pods claim jobs atomically, respect the dependency DAG
+(prepare, pool, generation shards, base training, branches, finalize), and heartbeat so a
+preempted job is requeued automatically. Generation for the huge 72B and 70B teachers is sharded
+across pods, so the longest jobs parallelize instead of pinning one machine for days. Training
+catches SIGTERM, checkpoints, and exits for-requeue, so a reclaimed spot pod loses minutes, not
+hours. Because every teacher is single-card int4, every job fits one spot GPU. Details are in
+`docs/26_fleet_orchestration.md`.
+
 Cost and time, from the planner (`python -m synscale.analysis.config_planner`), at September
-2026 rates:
+2026 rates. Because single-card int4 makes every job spot-safe, all-spot and hybrid cost almost
+the same: only the single longest base run (the 1B student, about 76 GPU-hours) is worth an
+on-demand pod, and even that is optional.
 
-| Setup | GPU-hours | Cost | Wall-clock |
+| C4 plan | GPU-hours | Cost (USD) | Cost (CAD) |
 |---|---|---|---|
-| C4 on H100 spot (~$1.49/hr) | ~1,185 | **~$1,770** | ~12 days on 4 GPUs in parallel |
-| C4 on H100 on-demand (~$2.50/hr) | ~1,185 | ~$2,960 | ~12 days on 4 GPUs |
+| All spot (~$1.49/hr) | ~1,230 | **~$1,840** | **~$2,550** |
+| Hybrid (1B base on-demand, rest spot) | ~1,230 | ~$1,910 | ~$2,660 |
+| All on-demand (~$2.50/hr) | ~1,230 | ~$3,080 | ~$4,280 |
 
-Cost is billable GPU-hours times the rate, so renting several GPUs in parallel cuts wall-clock
-for the same total dollars. The cheapest reliable plan is a hybrid: run the few long base-training
-jobs on on-demand, and the many short generation and branch jobs on spot, all on a persistent
-volume so reclaims do not lose work. Validate first without spending days:
+Budget for preemption re-runs: add roughly 25 percent, so plan for about $2,500 to $3,300 CAD.
+Cost is billable GPU-hours times the rate, so renting several spot pods in parallel cuts wall-clock
+for the same total dollars: at 6 to 8 pods the study finishes in about a week. Validate first
+without spending anything:
 
 ```bash
-make micro                   # CPU, minutes: runs every stage, including the data index and novelty analyses
-make budget PROFILE=c4       # GPU-hours and cost estimate
+make micro                   # CPU, minutes: runs every stage end to end, including the fleet queue
+make budget PROFILE=c4       # GPU-hours and the spot/hybrid/on-demand cost table above
 make smoke                   # GPU, about 1 to 3 hours: real teachers, tiny budget
 ```
 
 Run `scaling5080_fast` on a cheap card first as the pilot to measure real throughput and effect
-sizes, then commit the H100 budget to C4. Details and knobs are in `docs/RUN_ON_5080.md` and
-`docs/24_novel_experiment.md`.
+sizes, then commit the H100 budget to C4. Details and knobs are in `docs/26_fleet_orchestration.md`
+and `docs/24_novel_experiment.md`.
 
 ## What you get
 
@@ -136,12 +150,13 @@ synscale/
   evaluation/        self-contained multiple-choice and NLL scorer
   analysis/          scaling-law fits, data-quality index, screening and predictive and
                      allocation analyses, plots, cost planner
+  fleet.py           file-locked spot-fleet job queue, DAG, sharding, preemption requeue
   pipeline.py        the orchestrator that runs the whole study from a profile
-scripts/             install, prepare, generate, train, evaluate, analyze entry points
+scripts/             install, prepare, generate, train, evaluate, analyze, worker entry points
 configs/             student, teacher (two families), training, generation, evaluation fragments
-docs/                methodology (00), the experiment (24), scaling method (22), locked decisions (23)
+docs/                methodology (00), the experiment (24), scaling (22), decisions (23), fleet (26)
 paper/               abstract, introduction, methods drafts
-tests/               64 unit tests, CPU only, torch and vllm tests skip if unavailable
+tests/               68 unit tests, CPU only, torch and vllm tests skip if unavailable
 ```
 
 Install for development with `pip install -e ".[train,gen,eval,analysis,dev]"`. Run tests with
@@ -149,7 +164,8 @@ Install for development with `pip install -e ".[train,gen,eval,analysis,dev]"`. 
 
 ## Status
 
-The whole pipeline, including the data-quality index and the novelty analyses, runs end to end
-and is verified on CPU with `make micro`, and 64 unit tests pass. It has not yet run on a GPU
-here, so timing numbers are estimates in `synscale/analysis/config_planner.py` to confirm in the
-pilot. What remains before a paper is in `docs/25_implementation_tasks.md`.
+The whole pipeline, including the data-quality index, the novelty analyses, and the spot-fleet
+queue, runs end to end and is verified on CPU with `make micro`, and 68 unit tests pass. It has
+not yet run on a GPU here, so timing and cost numbers are transparent estimates in
+`synscale/analysis/config_planner.py` to confirm in the pilot. What remains before a paper is in
+`docs/25_implementation_tasks.md`.

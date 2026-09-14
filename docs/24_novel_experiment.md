@@ -66,12 +66,14 @@ what a capacity-dependent theory predicts.
 | Controls | C1 matched real tokens, C1b human Q&A, C0 base |
 | Seeds | 3 per cell (base seeds: 3 at 25M, 1 elsewhere) |
 
-Serving precision is uniform FP8 for every teacher (quantized on load); 70B and 72B run
-tensor-parallel over two cards. Uniform precision keeps precision from becoming a
-size-correlated confound; a BF16-vs-FP8 bridge cell at one mid teacher measures the residual.
-Total: 188 training runs. Everything else (matched checkpoints, WSD branching, equal-token
-generation, teacher-independent evaluation, seed-level uncertainty) is inherited from the
-locked methodology (`docs/00`) and the scaling method (`docs/22`).
+Serving precision is uniform int4 (AWQ, `awq_marlin`) for every teacher, quantized on load, so
+that even 70B and 72B fit a single 80 GB card and no teacher needs tensor-parallel over two
+cards. Uniform precision keeps precision from becoming a size-correlated confound; a bf16-vs-int4
+bridge cell at one mid teacher measures the residual. Single-card serving is also what makes the
+whole study spot-safe and cheap to run on a preemptible fleet (`docs/26`). Total: about 198
+training runs. Everything else (matched checkpoints, WSD branching, equal-token generation,
+teacher-independent evaluation, seed-level uncertainty) is inherited from the locked methodology
+(`docs/00`) and the scaling method (`docs/22`).
 
 ## 24.5 Why this is more novel than the earlier framing
 

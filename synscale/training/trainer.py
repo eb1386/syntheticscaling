@@ -16,6 +16,16 @@
 """
 from __future__ import annotations
 
+import signal as _signal
+_PREEMPTED = {"flag": False}
+def _install_preemption_handler():
+    def _h(signum, frame):
+        _PREEMPTED["flag"] = True
+    try:
+        _signal.signal(_signal.SIGTERM, _h); _signal.signal(_signal.SIGUSR1, _h)
+    except Exception:
+        pass
+
 import json
 import math
 import time
@@ -253,6 +263,7 @@ def train_phase(run: PhaseRun, state: TrainState, phase_name: PhaseName, seed: i
     if peak is None and run.device.type == "cuda":
         peak = peak_tflops_for_device(torch.cuda.get_device_name(run.device))
     held_out: dict[str, float] = {}
+    _install_preemption_handler()
     t_start = time.perf_counter()
     tokens_at_start = state.tokens
     window_t, window_tokens = time.perf_counter(), 0
@@ -277,6 +288,12 @@ def train_phase(run: PhaseRun, state: TrainState, phase_name: PhaseName, seed: i
                 log.flush()
             if run.options.resume_every_steps and state.step % run.options.resume_every_steps == 0 and state.status == "running":
                 save_checkpoint(run.out_dir / "resume.pt", run.model, run.optimizer, state, phase_name, seed)
+            if _PREEMPTED["flag"]:
+                # spot reclaim: persist a resume checkpoint and exit non-zero so the fleet requeues.
+                save_checkpoint(run.out_dir / "resume.pt", run.model, run.optimizer, state, phase_name, seed)
+                import sys as _sys
+                print(f"[preempted] saved resume.pt at step {state.step}; exiting for requeue")
+                _sys.exit(75)  # EX_TEMPFAIL: transient, retry
     if state.status == "running":
         state.status = "finished"
     if run.eval_sets and (not held_out or state.step % max(run.eval_every_steps, 1) != 0):

@@ -226,19 +226,24 @@ def _fp8t(name, size, params, family, config, tp=1, subset=None):
 _C4_STUDENTS = ("s025m", "s050m", "s100m", "s250m", "s500m", "s1b")
 _LLAMA_SUBSET = ("s100m", "s1b")   # cross-family screen at one small and one large student
 
+def _int4t(name, repo, params, family, config, subset=None):
+    # int4 AWQ: every teacher (incl 70B/72B) fits ONE H100 (~35 GB at 70B) -> single-card, spot-safe.
+    return TeacherSpec(name, repo, params, "awq_marlin", config_path=config, tensor_parallel=1,
+                       max_model_len=4096, family=family, student_subset=subset)
+
 C4_TEACHERS = (
-    # Qwen2.5-Instruct across the full size axis, all students
-    _fp8t("t0p5b", "Qwen/Qwen2.5-0.5B-Instruct", 500_000_000, "qwen2.5", "configs/teachers/qwen2.5-0.5b-instruct.yaml"),
-    _fp8t("t1p5b", "Qwen/Qwen2.5-1.5B-Instruct", 1_500_000_000, "qwen2.5", "configs/teachers/qwen2.5-1.5b-instruct.yaml"),
-    _fp8t("t3b",   "Qwen/Qwen2.5-3B-Instruct",   3_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-3b-instruct.yaml"),
-    _fp8t("t7b",   "Qwen/Qwen2.5-7B-Instruct",   7_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-7b-instruct.yaml"),
-    _fp8t("t14b",  "Qwen/Qwen2.5-14B-Instruct",  14_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-14b-instruct.yaml"),
-    _fp8t("t32b",  "Qwen/Qwen2.5-32B-Instruct",  32_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-32b-instruct.yaml"),
-    _fp8t("t72b",  "Qwen/Qwen2.5-72B-Instruct",  72_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-72b-instruct.yaml", tp=2),
-    # Llama-3.x partial second family at two student sizes (confound break)
+    # Qwen2.5-Instruct AWQ (official int4 repos), uniform precision across the full size axis, all students
+    _int4t("t0p5b", "Qwen/Qwen2.5-0.5B-Instruct-AWQ", 500_000_000, "qwen2.5", "configs/teachers/qwen2.5-0.5b-instruct.yaml"),
+    _int4t("t1p5b", "Qwen/Qwen2.5-1.5B-Instruct-AWQ", 1_500_000_000, "qwen2.5", "configs/teachers/qwen2.5-1.5b-instruct.yaml"),
+    _int4t("t3b",   "Qwen/Qwen2.5-3B-Instruct-AWQ",   3_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-3b-instruct.yaml"),
+    _int4t("t7b",   "Qwen/Qwen2.5-7B-Instruct-AWQ",   7_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-7b-instruct.yaml"),
+    _int4t("t14b",  "Qwen/Qwen2.5-14B-Instruct-AWQ",  14_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-14b-instruct.yaml"),
+    _int4t("t32b",  "Qwen/Qwen2.5-32B-Instruct-AWQ",  32_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-32b-instruct.yaml"),
+    _int4t("t72b",  "Qwen/Qwen2.5-72B-Instruct-AWQ",  72_000_000_000, "qwen2.5", "configs/teachers/qwen2.5-72b-instruct.yaml"),
+    # Llama-3.x partial second family at two students; 70B int4 (hugging-quants AWQ) fits one card
     _fp8t("l3b",   "meta-llama/Llama-3.2-3B-Instruct", 3_210_000_000, "llama3.2", "configs/teachers/l3b-instruct.yaml", subset=_LLAMA_SUBSET),
     _fp8t("l8b",   "meta-llama/Llama-3.1-8B-Instruct", 8_030_000_000, "llama3.1", "configs/teachers/l8b-instruct.yaml", subset=_LLAMA_SUBSET),
-    _fp8t("l70b",  "meta-llama/Llama-3.1-70B-Instruct", 70_600_000_000, "llama3.1", "configs/teachers/l70b-instruct.yaml", tp=2, subset=_LLAMA_SUBSET),
+    _int4t("l70b", "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4", 70_600_000_000, "llama3.1", "configs/teachers/l70b-instruct.yaml", subset=_LLAMA_SUBSET),
 )
 
 C4 = Profile(
@@ -253,7 +258,7 @@ C4 = Profile(
     tier2_seeds=0, tier2_teachers=(),
     c1_seeds=3, pool_prompts=2_000_000,
     dsweep_student=None, dsweep_teachers=(), dsweep_levels=(), dsweep_seeds=0,
-    training_prefix="train_scaling_", primary_outcome="loss", teacher_precision="fp8",
+    training_prefix="train_scaling_", primary_outcome="loss", teacher_precision="awq_marlin",
     gpu="h100_80", persistent_dir="/workspace/synscale", measure_data_properties=True,
     notes="C4 main-track target: Qwen 0.5-72B (all students) + partial Llama 3/8/70B at 100M and 1B; "
           "loss-based scaling, student-referenced data-quality index, cross-family screening (docs/24).",

@@ -51,7 +51,12 @@ def teacher_fit(params, gpu, precision):
     return None
 
 
-def choose_precision(params):
+def choose_precision(params, serve="auto"):
+    # The ultra-optimized C-configs serve EVERY teacher single-card int4 (AWQ/awq_marlin), so no
+    # teacher ever needs tensor-parallel=2 and every generation job is spot-safe. "auto" keeps the
+    # older bf16-for-small assumption for comparison.
+    if serve == "int4":
+        return "int4"
     return "bf16" if params <= 7e9 else "int4"
 
 
@@ -76,41 +81,80 @@ class Config:
     name: str
     gpu: str
     students: list
-    teachers: list          # param counts
-    families: int
+    teachers: list          # family-A teacher param counts, run across ALL students
+    families: int           # 1, or 2 when family_b is a partial screen (see family_b_*)
     seeds: int
     d_syn: int
     base_tok_per_param: int
     novelty: str
     neurips: str
     validation: bool = False
+    teacher_serve: str = "auto"     # "int4" = single-card int4 for all teachers (spot-safe, ultra-opt)
+    spot_usd: float = None          # marketplace/spot $/hr for this config's GPU, if it has one
+    ondemand_usd: float = None      # reliable on-demand $/hr, if different from spot
+    family_b_teachers: list = field(default_factory=list)  # partial 2nd family teacher params
+    family_b_students: list = field(default_factory=list)  # only these students get family B
+
+    def _cells(self):
+        """(teacher_params, student) training cells across both families. Family B is PARTIAL:
+        only family_b_teachers at family_b_students, which is what makes C4 affordable versus a
+        full 2x grid."""
+        cells = [(t, s) for s in self.students for t in self.teachers]
+        for t in self.family_b_teachers:
+            for s in self.family_b_students:
+                cells.append((t, s))
+        return cells
 
     def estimate(self):
         g = GPUS[self.gpu]
         d2 = int(self.d_syn / 0.75)
         teacher_tokens = self.d_syn / 0.75 / 0.9 * 1.25   # overgen + filter loss, per teacher
-        base_h = sum(train_gpu_hours(s, STUDENTS[s] * self.base_tok_per_param, self.gpu) for s in self.students)
-        # branches: (teachers*families + 3 controls) * seeds, per student
-        n_branch = len(self.students) * (len(self.teachers) * self.families + 3) * self.seeds
+        base_by_student = {s: train_gpu_hours(s, STUDENTS[s] * self.base_tok_per_param, self.gpu)
+                           for s in self.students}
+        base_h = sum(base_by_student.values())
+        cells = self._cells()
+        # branch runs: one per teacher-student cell + 3 controls per student, times seeds
+        n_branch = (len(cells) + 3 * len(self.students)) * self.seeds
         phase2_h = 0.0
-        for s in self.students:
-            per = train_gpu_hours(s, d2, self.gpu)
-            phase2_h += per * (len(self.teachers) * self.families + 3) * self.seeds
-        gen_h = 0.0; unfit = []
-        for _ in range(self.families):
-            for t in self.teachers:
-                h = gen_gpu_hours(t, teacher_tokens, self.gpu, choose_precision(t))
-                if h is None:
-                    unfit.append(t)
-                else:
-                    gen_h += h
+        for t, s in cells:
+            phase2_h += train_gpu_hours(s, d2, self.gpu) * self.seeds
+        for s in self.students:                        # 3 controls per student
+            phase2_h += train_gpu_hours(s, d2, self.gpu) * 3 * self.seeds
+        # generation: each teacher produces ONE synthetic corpus from the shared prompt pool, reused
+        # across every student it feeds (learnability q is measured per student, not regenerated), so
+        # decode is billed once per teacher. Family B teachers still generate, just for fewer students.
+        gen_h = 0.0; unfit = []; max_cards = 1
+        for t in list(self.teachers) + list(self.family_b_teachers):
+            prec = choose_precision(t, self.teacher_serve)
+            cards = teacher_fit(t, self.gpu, prec)
+            if cards is None:
+                unfit.append(t); continue
+            max_cards = max(max_cards, cards)
+            gen_h += gen_gpu_hours(t, teacher_tokens, self.gpu, prec)
         eval_h = n_branch * 1.3 * 0.25            # ~15 min per eval, scaled loosely
         total = base_h + phase2_h + gen_h + eval_h
         if self.validation:
             total *= 1.12
         cost = total * g["usd"]
+        # Hybrid plan: only the longest single base run (the 1B student) is worth an on-demand pod;
+        # every other job is short, sharded, or checkpointed, so it rides spot. See fleet.py.
+        ondemand_h = base_by_student.get("s1b", 0.0)
+        spot_h = total - ondemand_h
         return dict(base=base_h, gen=gen_h, phase2=phase2_h, eval=eval_h, total=total,
-                    cost=cost, days=total / 24, n_branch=n_branch, unfit=unfit)
+                    cost=cost, days=total / 24, n_branch=n_branch, unfit=unfit,
+                    max_cards=max_cards, ondemand_h=ondemand_h, spot_h=spot_h)
+
+    def cost_lines(self):
+        """(label, $) rows for all-spot / hybrid / all-on-demand, when spot/on-demand rates are set."""
+        e = self.estimate()
+        if self.spot_usd is None:
+            return [("community on-demand", e["cost"])]
+        od = self.ondemand_usd if self.ondemand_usd is not None else self.spot_usd
+        return [
+            ("all-spot", e["total"] * self.spot_usd),
+            ("hybrid (1B base on-demand, rest spot)", e["spot_h"] * self.spot_usd + e["ondemand_h"] * od),
+            ("all-on-demand", e["total"] * od),
+        ]
 
 
 def default_configs():
@@ -125,14 +169,22 @@ def default_configs():
                "Strong workshop / borderline main. Reaches the contested region but one family."),
         Config("C3 borderline main (1 family, full teacher axis)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 1, 3, 400_000_000, 20,
                "teachers to 70B, students to 1B, predictive validation",
-               "Borderline main track. Full teacher axis + validation; single-family confound remains.", True),
-        Config("C4 main plausible (2 families)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 2, 3, 400_000_000, 20,
-               "2 teacher families to 70B, students to 1B, validation",
-               "Main-track plausible. Breaks size-vs-family confound; one crisp validated finding needed.", True),
-        Config("C5 strongest (2 families, 5 seeds core)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 2, 5, 400_000_000, 20,
-               "2 families to 70B, 5 seeds, students to 1B, validation",
-               "Strongest single-GPU-rentable case. Tight CIs + confound broken + validation.", True),
+               "Borderline main track. Full teacher axis + validation; single-family confound remains.", True,
+               teacher_serve="int4", spot_usd=1.49, ondemand_usd=2.50),
+        Config("C4 main plausible (Qwen full + Llama partial)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 2, 3, 400_000_000, 20,
+               "Qwen 0.5-72B across all students + Llama 3/8/70B at 100M,1B (cross-family screen)",
+               "Main-track plausible. Breaks size-vs-family confound; one crisp validated finding needed.", True,
+               teacher_serve="int4", spot_usd=1.49, ondemand_usd=2.50,
+               family_b_teachers=[3e9, 8e9, 70e9], family_b_students=["s100m", "s1b"]),
+        Config("C5 strongest (partial 2nd family, 5 seeds core)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 2, 5, 400_000_000, 20,
+               "Qwen full + Llama partial, 5 seeds on core cells, students to 1B, validation",
+               "Strongest single-GPU-rentable case. Tight CIs + confound broken + validation.", True,
+               teacher_serve="int4", spot_usd=1.49, ondemand_usd=2.50,
+               family_b_teachers=[3e9, 8e9, 70e9], family_b_students=["s100m", "s1b"]),
     ]
+
+
+USD_TO_CAD = 1.39   # Sep 2026 approx; for the Canadian-dollar figures in the README
 
 
 def report():
@@ -151,8 +203,17 @@ def report():
         print(f"* {c.name} [{c.gpu}] ~${e['cost']:,.0f}, {e['days']:.0f} days serial, {e['n_branch']} branch runs")
         print(f"    novelty: {c.novelty}")
         print(f"    NeurIPS: {c.neurips}")
+        if c.spot_usd is not None:
+            serve = "single-card int4 (spot-safe)" if c.teacher_serve == "int4" else "mixed precision"
+            print(f"    serving: {serve}, max {e['max_cards']} card(s)/teacher; "
+                  f"on-demand hours {e['ondemand_h']:.0f}, spot hours {e['spot_h']:.0f}")
+            for label, usd in c.cost_lines():
+                print(f"      {label:<40} ${usd:>6,.0f} USD  (~${usd*USD_TO_CAD:>6,.0f} CAD)")
     print()
-    print("Prices: RunPod community cloud, Sep 2026 (H100 $2.89, A100-80 $1.39, L40S $0.99, A40 $0.44).")
+    print("Prices: H100 spot ~$1.49/hr, on-demand ~$2.50/hr; A100-80 $1.39, L40S $0.99, A40 $0.44 "
+          "(RunPod/marketplace, Sep 2026). CAD at ~1.39/USD.")
+    print("Hybrid = only the single longest base run (1B student) on an on-demand pod; every other")
+    print("job is short, sharded, or SIGTERM-checkpointed, so it rides spot. See synscale/fleet.py.")
 
 
 if __name__ == "__main__":

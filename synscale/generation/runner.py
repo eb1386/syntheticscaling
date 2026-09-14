@@ -68,9 +68,17 @@ def run_generation(
     manifest_extra: Optional[dict] = None,
     resume: bool = True,
     max_prompts: Optional[int] = None,
+    shard_index: int = 0,
+    shard_count: int = 1,
 ) -> dict[str, Any]:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # parallel sharding: this worker handles a contiguous slice of the pool; no global stop
+    slice_start = slice_end = None
+    if shard_count > 1:
+        total = sum(1 for _ in iter_pool(pool_path))
+        per = -(-total // shard_count)
+        slice_start, slice_end = shard_index * per, min((shard_index + 1) * per, total)
     rf = ResponseFilter(filter_cfg, lang_detector=lang_detector)
     meter = PowerMeter()
     target = int(target_student_tokens * overgeneration_factor)
@@ -87,7 +95,8 @@ def run_generation(
 
     def flush(shard_recs: list[PromptRecord], idx: int):
         nonlocal retained_tokens, n_offered, energy_kwh
-        shard_path = out_dir / f"shard-{idx:05d}.jsonl"
+        prefix = f"shard-w{shard_index}-" if shard_count > 1 else "shard-"
+        shard_path = out_dir / f"{prefix}{idx:05d}.jsonl"
         if resume and shard_path.exists():
             # Count its retained tokens for the stopping rule without regenerating.
             toks = 0
@@ -156,7 +165,11 @@ def run_generation(
         nonlocal n_offered
         n_offered += 1
 
+    pos = -1
     for rec in iter_pool(pool_path):
+        pos += 1
+        if slice_start is not None and not (slice_start <= pos < slice_end):
+            continue
         if max_prompts is not None and n_offered >= max_prompts:
             break
         shard.append(rec)
@@ -165,7 +178,7 @@ def run_generation(
             retained_tokens += flush(shard, shard_idx)
             shard = []
             shard_idx += 1
-            if retained_tokens >= target:
+            if shard_count == 1 and retained_tokens >= target:
                 break
     if shard and retained_tokens < target and (max_prompts is None or True):
         retained_tokens += flush(shard, shard_idx)
@@ -194,7 +207,8 @@ def run_generation(
     if manifest_extra:
         manifest.update(manifest_extra)
     manifest["dataset_sha256"] = _sha([p.name for p in shard_paths] + [retained_tokens, n_offered])
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    mname = f"manifest-w{shard_index}.json" if shard_count > 1 else "manifest.json"
+    (out_dir / mname).write_text(json.dumps(manifest, indent=2))
     return manifest
 
 
