@@ -2,8 +2,30 @@
 
 This is the exact procedure for running the C4 study on vast.ai, written so that once you fund a
 balance and give the assistant your vast.ai API key, it can provision, run, monitor, and tear down
-the experiment without wasting money. Read the "What you provide" and "Money safety" sections
+the experiment without wasting money. Read the "Network requirement" and "Money safety" sections
 before funding anything.
+
+## Network requirement (read this first)
+
+The assistant drives vast.ai through the vast.ai HTTPS API. A Claude Code remote environment only
+allows that if its **egress network policy permits `vast.ai`**. The default "trusted" policy
+(package registries and GitHub only) **blocks `vast.ai`, `console.vast.ai`, and `huggingface.co`**,
+so from such an environment the `vastai` CLI cannot reach the API at all (every call fails with a
+`403 CONNECT` policy denial), and the assistant cannot provision or monitor.
+
+To let the assistant run this end to end, one of the following must be true:
+
+1. **Recommended.** Run the assistant in a Claude Code environment whose network policy allows
+   `vast.ai` (a custom allowlist that includes `vast.ai` and `*.vast.ai`, or a full-egress policy).
+   Network policy is chosen when the environment is created; see
+   https://code.claude.com/docs/en/claude-code-on-the-web. The vast.ai box that runs the study has
+   its own unrestricted network, so Hugging Face and model downloads there are unaffected — only
+   the assistant's own session needs `vast.ai` reachable.
+2. **Alternative.** Run the six commands below yourself on your own computer (install the CLI with
+   `pip install vastai`, `vastai set api-key <KEY>`), and paste the outputs back. The scripts are
+   self-contained and money-safe; the assistant will guide each step and read your pasted results.
+
+Everything else in this repository is ready now regardless of which path you choose.
 
 ## The topology decision, and why it is a single box
 
