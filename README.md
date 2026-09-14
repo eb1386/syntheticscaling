@@ -100,6 +100,11 @@ catches SIGTERM, checkpoints, and exits for-requeue, so a reclaimed spot pod los
 hours. Because every teacher is single-card int4, every job fits one spot GPU. Details are in
 `docs/26_fleet_orchestration.md`.
 
+On vast.ai, which does not offer a network volume shared across separate instances, the same fleet
+runs on a **single multi-GPU box**: local disk is the shared volume and one GPU-pinned worker runs
+per card (`scripts/fleet_local.sh`). The full money-safe procedure, including a cheap smoke gate
+that proves the code on real CUDA before any H100 budget is spent, is in `docs/27_vast_runbook.md`.
+
 Cost and time, from the planner (`python -m synscale.analysis.config_planner`), at September
 2026 rates. Because single-card int4 makes every job spot-safe, all-spot and hybrid cost almost
 the same: only the single longest base run (the 1B student, about 76 GPU-hours) is worth an

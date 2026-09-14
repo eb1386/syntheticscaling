@@ -24,3 +24,8 @@ data/prompts/pool-*.manifest.json
 data/tokenizer/
 configs/experiments/*/
 checkpoints/
+.agents/
+.claude/
+skills-lock.json
+logs/
+.vast_instance

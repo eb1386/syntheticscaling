@@ -28,12 +28,16 @@ def main():
     ap.add_argument("--backend", default="auto")
     ap.add_argument("--gen-shards", type=int, default=8, help="split each big generation job this many ways")
     ap.add_argument("--loop", action="store_true", help="drain the queue in-process instead of one job")
+    ap.add_argument("--build-only", action="store_true", help="create the queue.json (if absent) and exit")
     a = ap.parse_args()
     profile = get_profile(a.profile)
     qdir = a.queue_dir or f"results/{profile.name}/queue"
     q = Queue(qdir)
     if not q.qpath.exists():
         q.init(build_queue(profile, gen_shards=a.gen_shards))
+    if a.build_only:
+        print(f"[worker] queue ready at {q.qpath}: {q.summary()}")
+        return
     me = f"{socket.gethostname()}:{os.getpid()}"
 
     def disp(job):
