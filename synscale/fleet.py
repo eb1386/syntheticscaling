@@ -68,21 +68,34 @@ class Queue:
 
     # ---- claiming (atomic via O_EXCL lock files) ---------------------------------------
     def _try_lock(self, jid: str, worker: str) -> bool:
+        # Hardlink-based claim: create a unique temp file, then hardlink it to the lock name. Link
+        # creation is atomic even on NFS *without* advisory locking (RunPod network volumes), so this
+        # is safe both on a single box's local disk and across pods sharing a network volume. O_EXCL
+        # alone is not reliably atomic on all NFS setups; hardlink is.
+        import uuid
         lock = self.locks / f"{jid}.lock"
-        try:
-            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            # stale? (dead worker) -> steal after TTL
+        tmp = self.locks / f".{jid}.{uuid.uuid4().hex}.tmp"
+        def _link_now() -> bool:
             try:
-                if time.time() - lock.stat().st_mtime > CLAIM_TTL:
-                    lock.unlink(missing_ok=True)
-                    fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                else:
-                    return False
-            except FileNotFoundError:
+                with open(tmp, "w") as f:
+                    f.write(worker)
+                os.link(tmp, lock)     # raises FileExistsError if the lock is already held
+                return True
+            except FileExistsError:
                 return False
-        os.write(fd, worker.encode()); os.close(fd)
-        return True
+            finally:
+                try: os.unlink(tmp)
+                except FileNotFoundError: pass
+        if _link_now():
+            return True
+        # held: steal only if the holder is stale (no heartbeat within TTL)
+        try:
+            if time.time() - lock.stat().st_mtime > CLAIM_TTL:
+                lock.unlink(missing_ok=True)
+                return _link_now()
+        except FileNotFoundError:
+            return _link_now()
+        return False
 
     def _unlock(self, jid: str) -> None:
         (self.locks / f"{jid}.lock").unlink(missing_ok=True)

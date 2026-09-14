@@ -79,57 +79,47 @@ spot instance and be safe to preempt, which is what the fleet below exploits. Th
 family breaks the size-versus-family confound at two student sizes without doubling the whole grid,
 which is what keeps C4 affordable. Total: about 198 training runs.
 
-## Running it on a spot fleet of H100s
+## Running it (RunPod recommended)
 
-The study is targeted at rented H100s and is built to run on a fleet of cheap, preemptible spot
-pods rather than one reliable machine. Two commands. The first installs dependencies, trains the
-tokenizer, downloads and tokenizes the corpora, fetches the teacher models, and builds the
-prompt pool onto a persistent volume. The second builds a job queue on that volume and drains it.
+The study runs on one multi-GPU H100 box, with local disk (or a persistent network volume) as the
+shared volume and one GPU-pinned fleet worker per card (`scripts/fleet_local.sh`). A file-locked
+job queue drives the dependency DAG (prepare, pool, generation shards, base training, branches,
+finalize); generation for the 72B and 70B teachers is sharded across the GPUs; training catches
+SIGTERM, checkpoints, and requeues, so a lost pod costs minutes. Because every teacher is
+single-card int4, every job fits one GPU. The mechanism is in `docs/26_fleet_orchestration.md`.
+
+**Provider choice matters more than any code tweak.** For a multi-day run needing a multi-GPU box,
+persistent storage, and reliability, the recommendation is **RunPod**: RunPod-owned Secure Cloud
+(99% SLA) or cheaper Community Cloud, both with **network volumes that survive a pod crash so work
+is never lost** — which, combined with the fleet's checkpoint-and-requeue design, makes an
+imperfect pod a non-event. Lambda has the best SLA but is 8-GPU-only, has no spot, and is often sold
+out; Vast.ai is cheapest but has no SLA and no shared volume (least reliable). Verified H100-80GB
+rates and the full C4 cost, from `python -m synscale.analysis.config_planner`:
+
+| Provider | $/GPU-h | C4 (~1,230 GPU-h) | Reliability |
+|---|---|---|---|
+| Vast.ai spot | ~$1.49 | ~$1,840 / ~$2,550 CAD | No SLA, no shared volume. Least reliable. |
+| TensorDock | ~$2.25 | ~$2,770 / ~$3,850 CAD | Curated marketplace; cost-conscious middle. |
+| **RunPod Community** | ~$2.69 | **~$3,310 / ~$4,610 CAD** | **Recommended default.** Network volumes; durable. |
+| **RunPod Secure** | ~$2.99 | ~$3,680 / ~$5,120 CAD | Most reliable. RunPod-owned, 99% SLA. |
+| Lambda / Modal | ~$3.99 | ~$4,900+ / ~$6,800+ CAD | Reliable but sold out / serverless mismatch. |
+
+Add ~25% for preemption re-runs. The full RunPod procedure (network volume, launch, monitor,
+teardown, and the money-safe smoke gate) is in `docs/28_runpod_runbook.md`; a single-box vast.ai
+alternative is in `docs/27_vast_runbook.md`. On the box itself:
 
 ```bash
 ./install.sh c4
-./run_all.sh c4 --fleet        # queue + one local worker; add more pods with scripts/worker.sh
+./run_all.sh c4 --fleet        # build the queue and drain it with one worker per GPU
 ```
 
-The fleet is the ultra-optimized path. A file-locked job queue lives on the shared persistent
-volume; any number of `scripts/worker.sh` pods claim jobs atomically, respect the dependency DAG
-(prepare, pool, generation shards, base training, branches, finalize), and heartbeat so a
-preempted job is requeued automatically. Generation for the huge 72B and 70B teachers is sharded
-across pods, so the longest jobs parallelize instead of pinning one machine for days. Training
-catches SIGTERM, checkpoints, and exits for-requeue, so a reclaimed spot pod loses minutes, not
-hours. Because every teacher is single-card int4, every job fits one spot GPU. Details are in
-`docs/26_fleet_orchestration.md`.
-
-On vast.ai, which does not offer a network volume shared across separate instances, the same fleet
-runs on a **single multi-GPU box**: local disk is the shared volume and one GPU-pinned worker runs
-per card (`scripts/fleet_local.sh`). The full money-safe procedure, including a cheap smoke gate
-that proves the code on real CUDA before any H100 budget is spent, is in `docs/27_vast_runbook.md`.
-
-Cost and time, from the planner (`python -m synscale.analysis.config_planner`), at September
-2026 rates. Because single-card int4 makes every job spot-safe, all-spot and hybrid cost almost
-the same: only the single longest base run (the 1B student, about 76 GPU-hours) is worth an
-on-demand pod, and even that is optional.
-
-| C4 plan | GPU-hours | Cost (USD) | Cost (CAD) |
-|---|---|---|---|
-| All spot (~$1.49/hr) | ~1,230 | **~$1,840** | **~$2,550** |
-| Hybrid (1B base on-demand, rest spot) | ~1,230 | ~$1,910 | ~$2,660 |
-| All on-demand (~$2.50/hr) | ~1,230 | ~$3,080 | ~$4,280 |
-
-Budget for preemption re-runs: add roughly 25 percent, so plan for about $2,500 to $3,300 CAD.
-Cost is billable GPU-hours times the rate, so renting several spot pods in parallel cuts wall-clock
-for the same total dollars: at 6 to 8 pods the study finishes in about a week. Validate first
-without spending anything:
+Validate without spending real money first:
 
 ```bash
 make micro                   # CPU, minutes: runs every stage end to end, including the fleet queue
-make budget PROFILE=c4       # GPU-hours and the spot/hybrid/on-demand cost table above
-make smoke                   # GPU, about 1 to 3 hours: real teachers, tiny budget
+make budget PROFILE=c4       # the provider cost comparison above
+make smoke                   # GPU, ~1-3 hours: real teachers, tiny budget (the pre-spend gate)
 ```
-
-Run `scaling5080_fast` on a cheap card first as the pilot to measure real throughput and effect
-sizes, then commit the H100 budget to C4. Details and knobs are in `docs/26_fleet_orchestration.md`
-and `docs/24_novel_experiment.md`.
 
 ## What you get
 
@@ -157,9 +147,9 @@ synscale/
                      allocation analyses, plots, cost planner
   fleet.py           file-locked spot-fleet job queue, DAG, sharding, preemption requeue
   pipeline.py        the orchestrator that runs the whole study from a profile
-scripts/             install, prepare, generate, train, evaluate, analyze, worker entry points
+scripts/             install, prepare, train, analyze, worker; runpod/ and vast/ launch toolkits
 configs/             student, teacher (two families), training, generation, evaluation fragments
-docs/                methodology (00), the experiment (24), scaling (22), decisions (23), fleet (26)
+docs/                methodology (00), experiment (24), scaling (22), fleet (26), RunPod (28), vast (27)
 paper/               abstract, introduction, methods drafts
 tests/               68 unit tests, CPU only, torch and vllm tests skip if unavailable
 ```

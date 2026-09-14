@@ -7,10 +7,11 @@ loss.
 
 - **Repo:** `eb1386/syntheticscaling` (private)
 - **Working branch:** `claude/admiring-fermi-btrw8q` (all work pushed here)
-- **As of:** 2026-09-14, commit `d30eab0`
+- **As of:** 2026-09-14, latest fleet/RunPod work on this branch
 - **Tests:** 68 passing (CPU; torch/vllm tests skip if unavailable)
-- **Runnable today:** whole pipeline end to end on CPU via `make micro`; GPU run pending a vast.ai launch
-- **One live blocker:** see "The vast.ai network blocker" below (resolved by starting a fresh session)
+- **Recommended provider:** **RunPod** (reliability + network volumes); vast.ai is the cheaper alternative
+- **Runnable today:** whole pipeline end to end on CPU via `make micro`; GPU run pending a RunPod launch
+- **One live blocker:** see "The egress blocker" below (resolved by starting a fresh all-domains session)
 
 ---
 
@@ -161,7 +162,22 @@ bound at session start, so the (correct) "All domains" change applies only to a 
 
 **22. "write a comprehensive md file message by message your entire context window as an MD
 handoff."**
-→ This document.
+→ Created this document (`HANDOFF.md`), committed `7e3cf34`.
+
+**23. "I heard vast.ai is really unreliable, maybe RunPod. Check ACTUAL current costs, change code,
+update handoff so the new one is the best/most reliable option: Koyeb / Shadeform / TensorDock /
+Lambda Labs / Modal or RunPod."**
+→ Researched current (Sep 2026) H100 pricing + reliability via web search. **Switched the
+recommended provider to RunPod** and documented why: RunPod Secure (99% SLA, RunPod-owned) or
+Community, both with **network volumes that survive a pod crash** so work is never lost — which,
+with the fleet's checkpoint+requeue, absorbs RunPod's occasional pod failures. Lambda has the best
+SLA but is 8-GPU-only, no spot, and frequently sold out (capacity is the risk); Vast is cheapest
+but no SLA / no shared volume; TensorDock is the cost-conscious middle; Modal/Koyeb are serverless
+mismatches. Installed `runpodctl` (2.14.0). Hardened `synscale/fleet.py`'s claim to a **hardlink
+lock** (atomic on RunPod's NFS network volumes, where plain `O_EXCL` is not enough). Rewrote the
+cost model (`config_planner.py`) with real per-provider rates and a ranked comparison. Wrote the
+`scripts/runpod/` toolkit (bootstrap, preflight, launch, monitor, teardown) and
+`docs/28_runpod_runbook.md`. Updated README + this handoff. (This turn.)
 
 ---
 
@@ -198,104 +214,128 @@ fits one 80 GB H100, so there are **no two-GPU jobs**, so **every job fits one s
 - Training catches **SIGTERM/SIGUSR1**, writes `resume.pt`, exits **75** (`EX_TEMPFAIL`) → worker
   requeues → another worker resumes. A reclaim costs minutes.
 - `scripts/fleet_local.sh` — on ONE multi-GPU box, launches one GPU-pinned worker per card
-  (`CUDA_VISIBLE_DEVICES`), all draining the same local queue. This is the vast.ai execution model.
+  (`CUDA_VISIBLE_DEVICES`), all draining the same queue. This is the single-box execution model used
+  on **both** RunPod (pod + network volume) and vast.ai; only provisioning differs.
+- `synscale/fleet.py` claim is a **hardlink lock**, atomic on RunPod's NFS network volumes (plain
+  `O_EXCL` is not reliably atomic there) and on local disk.
 - `scripts/worker.py` / `scripts/worker.sh` — one-job-per-process worker (frees VRAM between jobs)
   and a loop; `--build-only` seeds the queue and prints a summary.
 
 ---
 
-## 5. Cost (from `python -m synscale.analysis.config_planner`)
+## 5. Cost + provider choice (from `python -m synscale.analysis.config_planner`)
 
-C4 ≈ **1,230 GPU-hours** (single-card int4). Transparent FLOP+bandwidth estimate, ±a factor until
-the pilot measures real throughput.
+C4 ≈ **1,230 GPU-hours** (single-card int4). Verified H100-80GB rates (Sep 2026), cheapest-first:
 
-| C4 plan | Cost (USD) | Cost (CAD) |
-|---|---|---|
-| **All spot** (~$1.49/GPU-h) | ~$1,840 | ~$2,550 |
-| **Hybrid** (1B base on-demand, rest spot) | ~$1,910 | ~$2,660 |
-| All on-demand (~$2.50/GPU-h) | ~$3,080 | ~$4,280 |
+| Provider | $/GPU-h | C4 total | Reliability |
+|---|---|---|---|
+| Vast.ai spot | ~$1.49 | ~$1,840 / ~$2,550 CAD | No SLA, no shared volume. Least reliable. |
+| TensorDock | ~$2.25 | ~$2,770 / ~$3,850 CAD | Curated marketplace; cost-conscious middle. |
+| **RunPod Community** | ~$2.69 | **~$3,310 / ~$4,610 CAD** | **Recommended default.** Network volumes (durable). |
+| **RunPod Secure** | ~$2.99 | ~$3,680 / ~$5,120 CAD | Most reliable. RunPod-owned, 99% SLA. |
+| Modal / Lambda | ~$3.95–3.99 | ~$4,870–4,920 / ~$6,800 CAD | Serverless mismatch / sold out. |
 
-Add ~25% for preemption re-runs → **budget ~$2,500–$3,300 CAD**. All-spot ≈ hybrid because only the
-~76 GPU-h 1B base is long enough to warrant an on-demand anchor (which buys *availability*, not
-price). On an 8×H100 box the wall-clock is ~6–7 days; on 4×H100 ~13 days (same total dollars).
+**RunPod is the recommendation** (message 23): network volumes survive a pod crash so work is never
+lost, which the fleet's checkpoint+requeue turns into a non-event; real availability (Lambda sells
+out). Budget ~**$4,600–5,100 CAD** (Community→Secure) + ~25% re-runs → ~$5,500–6,000 CAD to finish
+comfortably. Vast (~$2,550 CAD) is ~$2,000 cheaper but unreliable; TensorDock is the middle. On an
+8×H100 box wall-clock is ~6–7 days; on 4×H100 ~13 days (same total dollars).
 
 ---
 
-## 6. Running on vast.ai (the current target)
+## 6. Running on RunPod (recommended target)
 
-Vast.ai has **no cross-instance shared volume**, so the study runs on **one multi-GPU box** (local
-disk = shared volume; the file-lock fleet works within one filesystem). Full runbook:
-`docs/27_vast_runbook.md`. Money-safe staged sequence:
+One multi-GPU pod + a persistent **network volume** at `/workspace` (survives pod death) + one
+GPU-pinned worker per card. Full runbook + provider comparison + console fallback:
+`docs/28_runpod_runbook.md`. The queue claim uses a **hardlink lock** (atomic on RunPod's NFS
+network volumes; plain `O_EXCL` is not enough there). Sequence (run in the new all-domains session):
 
 ```bash
-vastai set api-key <KEY>
-./scripts/vast/preflight.sh                       # auth + balance + ssh key + offers
-./scripts/vast/smoke.sh                            # ~$1-5 real-GPU gate; auto-destroys
-./scripts/vast/launch.sh c4 --gpus 8 --hf <TOK>   # only if smoke passes (on-demand)
-#   or interruptible: ...launch.sh c4 --gpus 8 --hf <TOK> --bid 12.0
-./scripts/vast/monitor.sh                          # one snapshot: RUNNING|DONE|STOPPED|GONE
-./scripts/vast/teardown.sh                         # fetch results, destroy, confirm billing stopped
+runpodctl config --apiKey <RUNPOD_KEY>
+./scripts/runpod/preflight.sh                      # verify auth + reminders
+# create a ~600GB network volume in the console (Storage -> Network Volumes), note its id, then:
+./scripts/runpod/launch.sh c4 --volume <VOL_ID> --gpus 8 --gh-token <GH_PAT> --hf <HF_TOKEN>
+#   add --secure for RunPod Secure Cloud
+./scripts/runpod/monitor.sh                        # pod state + where to read live progress
+./scripts/runpod/teardown.sh                       # remove pod (billing stops); volume persists
 ```
 
-**Money-safety rails built in:** every `create` is paired with a timed wait that auto-destroys on
-any terminal status; smoke self-destructs (EXIT trap) pass or fail; the funded balance is a hard
-cap (vast stops the box, disk preserved, if credit runs out — resumable); teardown lists anything
-still billing. The onstart hook installs and runs the fleet detached so the study **survives the
-driver session dying**; the code never needs a GitHub token on the third-party box (code is
-uploaded via `vastai copy` + a GO marker).
+The pod self-runs `scripts/runpod/bootstrap.sh` (clones with a read-only PAT, installs, launches the
+fleet detached), so the study survives the driver session dying. RunPod's remote exec is SSH-based,
+so live progress is read from the console Logs tab or over SSH; monitoring may need an occasional
+pasted log snippet. A **console fallback** and a **no-token manual-upload path** are in the runbook.
+`runpodctl` 2.14.0 is installed; `api.runpod.io` is egress-blocked in *this* build session, so the
+provisioning calls are **untested here** and run in the new all-domains session.
+
+### vast.ai alternative (single-box, fully automated)
+
+Cheaper, less reliable. The `scripts/vast/` toolkit is fully automated over the vast HTTPS API
+(`preflight → smoke → launch → monitor → teardown`), with a self-destructing ~$1–5 smoke gate and
+auto-destroy-on-failure rails; runbook `docs/27_vast_runbook.md`. Both providers use the same on-box
+engine (`scripts/fleet_local.sh`); only provisioning differs.
+
+**Money-safety rails (both providers):** validate on real CUDA with a cheap smoke run before the
+H100 budget; the funded balance is a hard cap; tear the box/pod down the moment `/workspace/DONE`
+appears; `--cost`/on-demand ceilings prevent taking a pricier host than intended.
 
 ---
 
-## 7. The vast.ai network blocker (current live issue)
+## 7. The egress blocker (current live issue)
 
-**This session cannot reach vast.ai** — its egress policy was "trusted" (GitHub + package
-registries only), which returns `403 CONNECT` for `vast.ai`, `console.vast.ai`, `huggingface.co`.
-The user then set **Domain allowlist → All domains** (correct fix), but a running session's egress
-proxy is **bound at session start** and does not pick up the change live (re-tested: still `000`).
+**This build session cannot reach the provider APIs** — its egress policy was "trusted" (GitHub +
+package registries only), returning `403 CONNECT` for `vast.ai`, `console.vast.ai`,
+`api.runpod.io`, `huggingface.co`. The user then set **Domain allowlist → All domains** (correct
+fix), but a running session's egress proxy is **bound at session start** and does not pick up the
+change live (re-tested: still `000`).
 
 **Resolution: start a fresh Claude Code session on branch `claude/admiring-fermi-btrw8q`.** The new
-session boots under "All domains" and vast.ai becomes reachable. First check in the new session:
+session boots under "All domains" and the provider APIs become reachable. First check in the new
+session:
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://console.vast.ai/   # want not-000
+curl -s -o /dev/null -w "%{http_code}\n" https://api.runpod.io/    # want not-000
 ```
 Everything is committed, so a new session has the full toolkit immediately.
 
 ---
 
-## 8. What the user must provide (for the GPU run)
+## 8. What the user must provide (for the RunPod run)
 
-1. **Funded vast.ai balance** — ~$2,400–2,800 USD for the full hybrid run + preemption buffer
-   (the balance is a hard cap; the box auto-stops if it's hit).
-2. **vast.ai API key** — https://console.vast.ai/manage-keys/
-3. **Hugging Face token with Llama-3.x access** — the gated second teacher family; request access
-   on the Llama model pages. Qwen teachers need none. Pass as `--hf <TOKEN>`.
+1. **Funded RunPod balance** — ~$4,600–5,100 CAD for C4 (Community→Secure) + ~25% re-runs, so
+   ~$5,500–6,000 CAD to finish comfortably. (Vast alternative: ~$2,400–2,800 USD.)
+2. **RunPod API key** — https://www.runpod.io/console/user/settings → `runpodctl config --apiKey`.
+3. **A network volume** (~600 GB) created in the RunPod console, in a region with H100 SXM stock.
+4. **Hugging Face token with Llama-3.x access** — the gated second teacher family (Qwen needs none).
+5. **A read-only GitHub PAT** scoped to `eb1386/syntheticscaling` (so the pod can clone; dies with
+   the pod). Optional if using the manual-upload path.
 
 ---
 
-## 9. File inventory (new/changed in the fleet + vast work)
+## 9. File inventory (new/changed across the fleet + vast + RunPod work)
 
 ```
-synscale/fleet.py                     NEW  file-locked queue, DAG, sharding, preemption requeue
-synscale/analysis/config_planner.py   UPD  single-card int4 + partial family B; spot/hybrid/on-demand USD+CAD
+synscale/fleet.py                     NEW  file-locked queue (HARDLINK lock, NFS-safe), DAG, sharding, requeue
+synscale/analysis/config_planner.py   UPD  single-card int4 + partial family B; PROVIDERS table + ranked comparison
 synscale/pipeline.py                  UPD  build_context() so any stage runs standalone from a worker
 synscale/generation/runner.py         UPD  shard_index/shard_count → per-worker shard files/manifests
 synscale/training/trainer.py          UPD  SIGTERM/SIGUSR1 handler → resume.pt, exit 75 (requeue)
-scripts/fleet_local.sh                NEW  on-box: one GPU-pinned worker per GPU (vast execution model)
+scripts/fleet_local.sh                NEW  on-box: one GPU-pinned worker per GPU (RunPod + vast engine)
 scripts/worker.py / worker.sh         NEW  one-job-per-process worker (+--build-only) and loop
-run_all.sh                            UPD  --fleet mode
-install.sh                            UPD  keep image CUDA torch; HF token for gated Llama; header
-scripts/vast/common.sh                NEW  helpers; every create pairs with a timed auto-destroy wait
-scripts/vast/preflight.sh             NEW  auth + balance + ssh key + offer availability
-scripts/vast/smoke.sh                 NEW  the $1-5 real-GPU money gate (auto-destroys)
-scripts/vast/onstart.sh               NEW  unattended box setup + detached fleet launch
-scripts/vast/launch.sh                NEW  provision one multi-GPU box + release the run
-scripts/vast/monitor.sh               NEW  one status snapshot (RUNNING|DONE|STOPPED|GONE)
-scripts/vast/teardown.sh              NEW  fetch results, destroy, list anything still billing
-docs/26_fleet_orchestration.md        NEW  the fleet design + "why not all spot"
-docs/27_vast_runbook.md               NEW  the vast.ai procedure + network requirement + money safety
-README.md                             UPD  reconciled to single-card int4; points at docs/26 + 27
+run_all.sh / install.sh               UPD  --fleet mode; install keeps image CUDA torch + HF token
+scripts/runpod/bootstrap.sh           NEW  pod-side: clone (PAT) or wait-for-upload, install, run fleet
+scripts/runpod/preflight.sh           NEW  runpodctl auth check + reminders
+scripts/runpod/launch.sh              NEW  create pod on a network volume; pod self-runs bootstrap
+scripts/runpod/monitor.sh             NEW  pod state via runpodctl; where to read live progress
+scripts/runpod/teardown.sh            NEW  remove pod (billing stops); network volume persists
+scripts/vast/*.sh                     NEW  vast alternative (common/preflight/smoke/onstart/launch/monitor/teardown)
+docs/26_fleet_orchestration.md        NEW  fleet design + "why not all spot"
+docs/27_vast_runbook.md               NEW  vast.ai procedure (alternative)
+docs/28_runpod_runbook.md             NEW  RunPod procedure + provider comparison + reliability rationale
+README.md                             UPD  RunPod primary; provider cost/reliability table
 .gitignore                            UPD  excludes session tooling (.agents/, .claude/, logs/, etc.)
 ```
+
+Tooling installed in this environment: `runpodctl` 2.14.0, `vastai` 1.7.0 (both need the new
+all-domains session to reach their APIs).
 
 Earlier C4 files already committed in `1d2b5ef`: `analysis/novelty.py`, `analysis/data_properties.py`,
 `analysis/scaling.py` (per-seed fits, `L_inf_hat`, multiplier), `docs/24_novel_experiment.md`,
@@ -303,7 +343,8 @@ students/teachers/training configs, `scripts/prepare_data.py` (16k BPE), tests.
 
 **Commit trail on the branch:**
 `1d2b5ef` Rework into C4 → `1349979` fleet + single-card int4 → `8aa78e2` vast toolkit + on-box
-fleet → `d30eab0` document vast egress requirement.
+fleet → `d30eab0` vast egress requirement → `7e3cf34` HANDOFF → (this turn) RunPod provider switch:
+NFS-safe lock, provider cost comparison, `scripts/runpod/` + `docs/28`.
 
 ---
 
@@ -317,19 +358,24 @@ JSON parsers were unit-checked against fake payloads; the code tarball (`git arc
 the scripts.
 
 **Not yet verified (needs the GPU run):** the code has **never run on a real GPU** — that is exactly
-what `smoke.sh` is for (spends a few dollars to catch any CUDA/vLLM issue before the H100 budget).
-Also unverified until an account is connected: vast.ai offer availability/pricing at run time, that
-`vastai copy` traverses cleanly, and real teacher-decode throughput (all estimates are ±a factor).
+what the smoke gate is for (spends a few dollars to catch any CUDA/vLLM issue before the H100
+budget). Also unverified until an account is connected and reachable in the new session: the RunPod
+`runpodctl` provisioning path (API blocked in the build session), whether the pod start-command runs
+the bootstrap cleanly (console fallback covers it), real H100 availability/pricing, and real
+teacher-decode throughput (all estimates ±a factor).
 
 ---
 
 ## 11. Immediate next step
 
 1. Start a **fresh session** on `claude/admiring-fermi-btrw8q` (for the "All domains" policy).
-2. Have the **funded balance + vast API key + HF token** ready.
-3. Say go. Order of operations: confirm vast.ai reachable → `vastai set api-key` → `preflight` →
-   **`smoke` (must pass)** → `launch c4 --gpus 8 --hf` → `monitor` (scheduled check-ins) →
-   `teardown` the moment it's DONE.
+2. Have ready: **funded RunPod balance + RunPod API key + a ~600GB network volume (console) + HF
+   token (Llama access) + read-only GitHub PAT**.
+3. Say go. Order of operations: confirm `api.runpod.io` reachable → `runpodctl config --apiKey` →
+   `runpod/preflight.sh` → **smoke on one cheap GPU (must pass)** → create the network volume →
+   `runpod/launch.sh c4 --volume <id> --gpus 8 --gh-token <pat> --hf <tok>` → `runpod/monitor.sh`
+   (scheduled check-ins) → `runpod/teardown.sh` the moment `/workspace/DONE` appears.
+   (Vast.ai remains a fully-automated cheaper alternative via `scripts/vast/` if preferred.)
 
 Do **not** skip the smoke gate. It is the difference between "a few dollars to find a bug" and
 "hundreds of dollars into a broken run."

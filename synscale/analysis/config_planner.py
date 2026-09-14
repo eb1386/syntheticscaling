@@ -1,27 +1,39 @@
-"""Plan and cost candidate experiment configurations across RunPod GPUs.
+"""Plan and cost candidate experiment configurations, and compare GPU providers.
 
 Answers the decision question: for each of several study scopes (which teachers, which
-students, one vs two families, seeds) and a chosen GPU, what are the GPU-hours, the RunPod
-dollar cost, the wall-clock, and a blunt read on how it lands for NeurIPS. Every number is a
-transparent estimate from FLOPs + bandwidth scaling and is +-2x until measured on RunPod; the
-point is relative comparison, not precision. Run: python -m synscale.analysis.config_planner
+students, one vs two families, seeds) and a chosen GPU, what are the GPU-hours, the dollar
+cost, the wall-clock, and a blunt read on how it lands for NeurIPS. Also prints C4 across
+providers (RunPod/TensorDock/Lambda/Vast/Modal) with a reliability read. Every number is a
+transparent estimate from FLOPs + bandwidth scaling and is +-2x until measured in the pilot;
+the point is relative comparison, not precision. Run: python -m synscale.analysis.config_planner
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# --- GPUs: VRAM GB, dense BF16 TFLOPS [approx], mem bandwidth GB/s, RunPod community $/hr (Sep 2026) ---
+# --- GPUs: VRAM GB, dense BF16 TFLOPS [approx], mem bandwidth GB/s, reference $/hr (Sep 2026) ---
+# h100_80's reference rate is RunPod Community on-demand H100 SXM, the recommended primary provider.
 GPUS = {
-    "rtx5080":  dict(vram=16,  tflops=112, bw=960,  usd=0.30),  # your card (owned); $ shown as electricity-ish
+    "rtx5080":  dict(vram=16,  tflops=112, bw=960,  usd=0.30),  # a 5080 (owned); $ shown as electricity-ish
     "rtx4090":  dict(vram=24,  tflops=165, bw=1008, usd=0.69),
     "a40":      dict(vram=48,  tflops=150, bw=696,  usd=0.44),
     "a6000":    dict(vram=48,  tflops=155, bw=768,  usd=0.49),
     "l40s":     dict(vram=48,  tflops=362, bw=864,  usd=0.99),
     "a100_80":  dict(vram=80,  tflops=312, bw=1935, usd=1.39),
-    "h100_80":  dict(vram=80,  tflops=990, bw=3350, usd=2.89),
+    "h100_80":  dict(vram=80,  tflops=990, bw=3350, usd=2.69),  # RunPod Community H100 SXM on-demand
     "h200":     dict(vram=141, tflops=990, bw=4800, usd=4.39),
-    "h100_spot":     dict(vram=80, tflops=990, bw=3350, usd=1.49),  # marketplace/spot (Vast/Spheron), Sep 2026
-    "h100_ondemand": dict(vram=80, tflops=990, bw=3350, usd=2.50),  # reliable on-demand (Spheron/Lambda)
+}
+
+# --- Per-GPU-hour H100-80GB rates by provider, with a blunt reliability read (Sep 2026, verified) ---
+# For a multi-day training run needing a multi-GPU box + persistent storage + programmatic control.
+PROVIDERS = {
+    #                         $/GPU-h   reliability note
+    "RunPod Secure":     dict(usd=2.99, note="RunPod-owned HW, 99% SLA. Network volumes survive pod death. Recommended reliable tier."),
+    "RunPod Community":  dict(usd=2.69, note="RunPod marketplace + network volumes (durable). Cheaper; host-dependent uptime. Recommended default."),
+    "TensorDock":        dict(usd=2.25, note="Curated marketplace, cheaper than RunPod. Less proven than Secure; storage model varies."),
+    "Lambda Cloud":      dict(usd=3.99, note="Best SLA (99.9%) BUT H100 SXM is 8-GPU-only, no spot, and frequently SOLD OUT. Capacity is the risk."),
+    "Vast.ai spot":      dict(usd=1.49, note="Cheapest. Peer-to-peer, NO uptime SLA, no cross-instance shared volume. Least reliable."),
+    "Modal":             dict(usd=3.95, note="Serverless, per-second, preempts by default. Paradigm mismatch for multi-day SSH training."),
 }
 
 # student total params and per-size MFU assumption (tiny models under-use big GPUs)
@@ -145,15 +157,15 @@ class Config:
                     max_cards=max_cards, ondemand_h=ondemand_h, spot_h=spot_h)
 
     def cost_lines(self):
-        """(label, $) rows for all-spot / hybrid / all-on-demand, when spot/on-demand rates are set."""
+        """(label, $) RunPod cost rows: all-Community / hybrid / all-Secure, when rates are set."""
         e = self.estimate()
         if self.spot_usd is None:
             return [("community on-demand", e["cost"])]
         od = self.ondemand_usd if self.ondemand_usd is not None else self.spot_usd
         return [
-            ("all-spot", e["total"] * self.spot_usd),
-            ("hybrid (1B base on-demand, rest spot)", e["spot_h"] * self.spot_usd + e["ondemand_h"] * od),
-            ("all-on-demand", e["total"] * od),
+            ("RunPod Community (all jobs)", e["total"] * self.spot_usd),
+            ("hybrid (1B base on Secure, rest Community)", e["spot_h"] * self.spot_usd + e["ondemand_h"] * od),
+            ("RunPod Secure (all jobs)", e["total"] * od),
         ]
 
 
@@ -170,16 +182,16 @@ def default_configs():
         Config("C3 borderline main (1 family, full teacher axis)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 1, 3, 400_000_000, 20,
                "teachers to 70B, students to 1B, predictive validation",
                "Borderline main track. Full teacher axis + validation; single-family confound remains.", True,
-               teacher_serve="int4", spot_usd=1.49, ondemand_usd=2.50),
+               teacher_serve="int4", spot_usd=2.69, ondemand_usd=2.99),
         Config("C4 main plausible (Qwen full + Llama partial)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 2, 3, 400_000_000, 20,
                "Qwen 0.5-72B across all students + Llama 3/8/70B at 100M,1B (cross-family screen)",
                "Main-track plausible. Breaks size-vs-family confound; one crisp validated finding needed.", True,
-               teacher_serve="int4", spot_usd=1.49, ondemand_usd=2.50,
+               teacher_serve="int4", spot_usd=2.69, ondemand_usd=2.99,
                family_b_teachers=[3e9, 8e9, 70e9], family_b_students=["s100m", "s1b"]),
         Config("C5 strongest (partial 2nd family, 5 seeds core)", "h100_80", S6, [0.5e9,1.5e9,3e9,7e9,14e9,32e9,70e9], 2, 5, 400_000_000, 20,
                "Qwen full + Llama partial, 5 seeds on core cells, students to 1B, validation",
                "Strongest single-GPU-rentable case. Tight CIs + confound broken + validation.", True,
-               teacher_serve="int4", spot_usd=1.49, ondemand_usd=2.50,
+               teacher_serve="int4", spot_usd=2.69, ondemand_usd=2.99,
                family_b_teachers=[3e9, 8e9, 70e9], family_b_students=["s100m", "s1b"]),
     ]
 
@@ -209,11 +221,22 @@ def report():
                   f"on-demand hours {e['ondemand_h']:.0f}, spot hours {e['spot_h']:.0f}")
             for label, usd in c.cost_lines():
                 print(f"      {label:<40} ${usd:>6,.0f} USD  (~${usd*USD_TO_CAD:>6,.0f} CAD)")
+    # C4 across providers, ranked cheapest-first, with the reliability read.
+    c4 = next(c for c in default_configs() if c.name.startswith("C4"))
+    h = c4.estimate()["total"]
     print()
-    print("Prices: H100 spot ~$1.49/hr, on-demand ~$2.50/hr; A100-80 $1.39, L40S $0.99, A40 $0.44 "
-          "(RunPod/marketplace, Sep 2026). CAD at ~1.39/USD.")
-    print("Hybrid = only the single longest base run (1B student) on an on-demand pod; every other")
-    print("job is short, sharded, or SIGTERM-checkpointed, so it rides spot. See synscale/fleet.py.")
+    print(f"== C4 (~{h:.0f} GPU-h) across providers, cheapest first ==")
+    for name, p in sorted(PROVIDERS.items(), key=lambda kv: kv[1]["usd"]):
+        usd = h * p["usd"]
+        print(f"  {name:<18} ${p['usd']:.2f}/GPU-h  ->  ${usd:>6,.0f} USD (~${usd*USD_TO_CAD:>6,.0f} CAD)   {p['note']}")
+    print()
+    print("RECOMMENDED: RunPod. Best reliability-per-dollar for a multi-day run — RunPod-owned Secure")
+    print("HW (99% SLA) or Community, both with NETWORK VOLUMES that survive a pod crash so work is")
+    print("never lost, plus real availability (Lambda sells out) and a CLI (runpodctl). The fleet's")
+    print("checkpoint+requeue design absorbs RunPod's occasional pod failures. Vast is cheaper but has")
+    print("no SLA and no shared volume; use it only to shave cost knowingly. See docs/28_runpod_runbook.md.")
+    print("Hybrid = the single longest base run (1B) on Secure, every other job on Community; add ~25%")
+    print("for preemption re-runs. CAD at ~1.39/USD. +-2x until measured in the pilot.")
 
 
 if __name__ == "__main__":
