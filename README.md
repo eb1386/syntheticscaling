@@ -25,7 +25,7 @@ L = f(S, T, D)
 
 and fit the data-scaling curve `L(D) = E + A·D^(−α)` for every cell, where `E` is the estimated
 asymptote over the observed range, `A` the coefficient, and `α` the exponent. Then we ask five
-things, each falsifiable.
+things, each falsifiable:
 
 1. **Rate versus level.** Does the teacher change the exponent `α`, or only the asymptote `E`?
 2. **Screening, the centerpiece.** We build a student-referenced data-quality index `q` from
